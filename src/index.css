@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #10b981;
+  --color-primary-dark: #059669;
+  --color-primary-light: #34d399;
+  --color-bg: #0f172a;
+  --color-card: #1e293b;
+  --color-card-hover: #334155;
+  --color-text: #f8fafc;
+  --color-text-muted: #94a3b8;
+  --color-border: #334155;
+  --color-win: #22c55e;
+  --color-draw: #eab308;
+  --color-loss: #ef4444;
+  --font-display: "Bebas Neue", "Oswald", system-ui, sans-serif;
+  --font-body: "DM Sans", "Inter", system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text font-body antialiased;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-card-hover rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary/50;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 ease-out;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-bg hover:bg-primary-dark active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-card text-text hover:bg-card-hover border border-border;
+  }
+
+  .card {
+    @apply bg-card rounded-xl border border-border p-4 transition-all duration-200;
+  }
+
+  .card-hover {
+    @apply hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10;
+  }
+
+  .badge {
+    @apply px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide;
+  }
+
+  .badge-live {
+    @apply bg-red-500/20 text-red-400 animate-pulse;
+  }
+
+  .badge-scheduled {
+    @apply bg-blue-500/20 text-blue-400;
+  }
+
+  .badge-completed {
+    @apply bg-green-500/20 text-green-400;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-card-hover rounded;
+  }
+
+  .stat-bar {
+    @apply h-2 rounded-full bg-card-hover overflow-hidden;
+  }
+
+  .stat-bar-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+  }
+
+  .glow {
+    @apply shadow-lg shadow-primary/25;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
