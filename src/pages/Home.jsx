@@ -1,13 +1,27 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { fixturesApi, teamsApi, liveApi } from '../api/client'
-import FixtureCard from '../components/fixtures/FixtureCard'
 import TeamCard from '../components/teams/TeamCard'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import { SkeletonList } from '../components/common/SkeletonCard'
+import { formatRating } from '../utils/formatters'
+
+// Tournament state labels for display
+const TOURNAMENT_STATE_LABELS = {
+  IDLE: 'Waiting',
+  SETUP: 'Starting',
+  ROUND_OF_16: 'Round of 16',
+  QF_BREAK: 'QF Starting',
+  QUARTER_FINALS: 'Quarter-Finals',
+  SF_BREAK: 'SF Starting',
+  SEMI_FINALS: 'Semi-Finals',
+  FINAL_BREAK: 'Final Starting',
+  FINAL: 'THE FINAL',
+  RESULTS: 'Complete',
+  COMPLETE: 'Complete',
+}
 
 export default function Home() {
-  const [recentMatches, setRecentMatches] = useState([])
   const [topTeams, setTopTeams] = useState([])
   const [liveStatus, setLiveStatus] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -15,16 +29,14 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [fixturesRes, teamsRes, statusRes] = await Promise.all([
-          fixturesApi.getAll({ limit: 6 }).catch(() => ({ data: [] })),
+        const [teamsRes, statusRes] = await Promise.all([
           teamsApi.getTop16().catch(() => ({ data: [] })),
           liveApi.getStatus().catch(() => null)
         ])
 
-        // Get completed fixtures
-        const completed = (fixturesRes.data || []).filter(f => f.status === 'completed')
-        setRecentMatches(completed.slice(0, 6))
-        setTopTeams((teamsRes.data || []).slice(0, 4))
+        // Sort teams by cups won
+        const sortedTeams = (teamsRes.data || []).sort((a, b) => (b.cups_won || 0) - (a.cups_won || 0))
+        setTopTeams(sortedTeams.slice(0, 8))
         setLiveStatus(statusRes)
       } catch (error) {
         console.error('Failed to fetch home data:', error)
@@ -34,95 +46,158 @@ export default function Home() {
     }
 
     fetchData()
+    
+    // Refresh status every 30 seconds
+    const interval = setInterval(async () => {
+      try {
+        const statusRes = await liveApi.getStatus()
+        setLiveStatus(statusRes)
+      } catch (e) {}
+    }, 30000)
+    
+    return () => clearInterval(interval)
   }, [])
+
+  const isLive = liveStatus?.tournament?.state && 
+    ['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(liveStatus.tournament.state)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Hero Section */}
       <div className="text-center mb-12 animate-fade-in">
-        <h1 className="text-4xl sm:text-5xl font-bold mb-4">
+        <div className="inline-flex items-center justify-center w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-primary to-primary-dark shadow-2xl shadow-primary/30">
+          <span className="text-5xl">⚽</span>
+        </div>
+        <h1 className="text-5xl sm:text-6xl font-bold mb-4 tracking-tight">
           <span className="text-gradient">Foot</span>
           <span className="text-text">Five</span>
         </h1>
         <p className="text-text-muted text-lg max-w-2xl mx-auto">
-          5-a-side football simulation with knockout tournaments, live match tracking, and team stats
+          Live 5-a-side knockout tournaments with real-time scores, instant updates, and comprehensive team stats
         </p>
       </div>
 
-      {/* Live Tournament CTA */}
+      {/* Live Tournament Status Card */}
       <div className="mb-10">
         <Link to="/live">
-          <div className="card card-hover bg-gradient-to-r from-primary/10 via-card to-yellow-500/10 border-primary/30 p-6 sm:p-8 relative overflow-hidden">
-            {/* Live indicator */}
-            {liveStatus?.tournament?.state && !['IDLE', 'COMPLETE'].includes(liveStatus.tournament.state) && (
-              <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <span className="text-xs font-semibold text-primary">LIVE</span>
+          <div className={`
+            relative overflow-hidden rounded-3xl p-6 sm:p-8 transition-all duration-300
+            ${isLive 
+              ? 'bg-gradient-to-br from-live/10 via-card to-live/5 border border-live/30 shadow-xl shadow-live/10' 
+              : 'bg-gradient-to-br from-primary/10 via-card to-gold/5 border border-border hover:border-primary/30'}
+          `}>
+            {/* Animated background for live state */}
+            {isLive && (
+              <div className="absolute inset-0 opacity-30">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-live/20 to-transparent animate-pulse" />
               </div>
             )}
-            
-            <div className="flex flex-col sm:flex-row items-center gap-6">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-yellow-500 to-primary flex items-center justify-center text-4xl shadow-xl shadow-primary/30">
-                🏆
+
+            <div className="relative flex flex-col md:flex-row items-center gap-6">
+              {/* Icon */}
+              <div className={`
+                w-24 h-24 rounded-2xl flex items-center justify-center text-5xl shadow-xl
+                ${isLive 
+                  ? 'bg-gradient-to-br from-live/30 to-live/10 shadow-live/20' 
+                  : 'bg-gradient-to-br from-gold/30 to-primary/20 shadow-gold/20'}
+              `}>
+                {isLive ? '🔴' : '🏆'}
               </div>
-              <div className="flex-1 text-center sm:text-left">
-                <h2 className="text-2xl font-bold text-text mb-2">Live Tournament</h2>
+
+              {/* Content */}
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-text">
+                    {isLive ? 'Live Now!' : 'Live Tournament'}
+                  </h2>
+                  {isLive && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-live/20 border border-live/30">
+                      <span className="w-2 h-2 rounded-full bg-live animate-pulse" />
+                      <span className="text-sm font-bold text-live">LIVE</span>
+                    </span>
+                  )}
+                </div>
+                
                 {liveStatus?.tournament ? (
-                  <p className="text-text-muted">
+                  <div className="space-y-2">
                     {liveStatus.tournament.state === 'IDLE' ? (
-                      'Next tournament starts at :55 past the hour'
+                      <p className="text-text-muted">
+                        Next tournament starts at <span className="font-mono text-primary font-bold">:55</span> past the hour
+                      </p>
                     ) : liveStatus.tournament.state === 'COMPLETE' || liveStatus.tournament.state === 'RESULTS' ? (
-                      <>
+                      <div className="flex items-center justify-center md:justify-start gap-2">
                         {liveStatus.tournament.winner && (
-                          <><span className="text-primary font-semibold">{liveStatus.tournament.winner.name || liveStatus.tournament.winner}</span> won! </>
+                          <span className="flex items-center gap-2">
+                            <span className="text-gold">🏆</span>
+                            <span className="text-primary font-semibold">
+                              {liveStatus.tournament.winner.name || liveStatus.tournament.winner}
+                            </span>
+                            <span className="text-text-muted">won!</span>
+                          </span>
                         )}
-                        Next tournament soon...
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <span className="text-primary font-semibold">{liveStatus.tournament.currentRound}</span>
+                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                        <span className="px-3 py-1 rounded-lg bg-accent/20 text-accent font-semibold text-sm">
+                          {TOURNAMENT_STATE_LABELS[liveStatus.tournament.state] || liveStatus.tournament.state}
+                        </span>
                         {liveStatus.tournament.activeMatches > 0 && (
-                          <> • {liveStatus.tournament.activeMatches} matches live</>
+                          <span className="text-text-muted">
+                            {liveStatus.tournament.activeMatches} matches in progress
+                          </span>
                         )}
-                      </>
+                      </div>
                     )}
-                  </p>
+                  </div>
                 ) : (
                   <p className="text-text-muted">
                     Watch live tournaments with real-time scores and events
                   </p>
                 )}
               </div>
-              <div className="btn btn-primary">
-                Watch Live →
+
+              {/* CTA Button */}
+              <div className={`
+                btn font-bold
+                ${isLive ? 'bg-live text-white shadow-lg shadow-live/30' : 'btn-primary'}
+              `}>
+                {isLive ? 'Watch Live →' : 'View Tournament →'}
               </div>
             </div>
           </div>
         </Link>
       </div>
 
-      {/* Recent Results */}
-      <Section 
-        title="⚽ Recent Results" 
-        link="/fixtures?status=completed"
-        className="mb-10"
-      >
-        {loading ? (
-          <SkeletonList count={3} />
-        ) : recentMatches.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {recentMatches.map(fixture => (
-              <FixtureCard key={fixture.fixture_id} fixture={fixture} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState message="No completed matches yet. Start a tournament to play!" />
-        )}
-      </Section>
+      {/* Quick Stats Summary */}
+      {topTeams.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+          <QuickStatCard 
+            icon="👥" 
+            value={topTeams.length * 2} 
+            label="Teams" 
+          />
+          <QuickStatCard 
+            icon="🏆" 
+            value={topTeams.reduce((sum, t) => sum + (t.cups_won || 0), 0)} 
+            label="Tournaments" 
+          />
+          <QuickStatCard 
+            icon="⚽" 
+            value={topTeams.reduce((sum, t) => sum + (t.goals_for || 0), 0)} 
+            label="Goals" 
+          />
+          <QuickStatCard 
+            icon="🎯" 
+            value={topTeams.reduce((sum, t) => sum + (t.wins || 0), 0)} 
+            label="Matches Won" 
+          />
+        </div>
+      )}
 
       {/* Top Teams */}
       <Section 
-        title="🏆 Top Teams" 
+        title="🏆 Hall of Fame" 
+        subtitle="Teams with the most tournament wins"
         link="/teams"
         className="mb-10"
       >
@@ -130,8 +205,14 @@ export default function Home() {
           <SkeletonList count={4} type="team" />
         ) : topTeams.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {topTeams.map(team => (
-              <TeamCard key={team.team_name} team={team} />
+            {topTeams.map((team, index) => (
+              <div 
+                key={team.team_name} 
+                className="animate-slide-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <TeamCard team={team} rank={index + 1} />
+              </div>
             ))}
           </div>
         ) : (
@@ -139,40 +220,56 @@ export default function Home() {
         )}
       </Section>
 
-      {/* Quick Links */}
+      {/* Quick Navigation */}
       <div className="grid gap-4 sm:grid-cols-3">
         <QuickLinkCard
           to="/live"
           icon="🔴"
           title="Live Tournament"
-          description="Watch matches in real-time"
-        />
-        <QuickLinkCard
-          to="/fixtures"
-          icon="📊"
-          title="All Fixtures"
-          description="View all matches and results"
+          description="Watch matches unfold in real-time with live scores"
+          color="from-live/20 to-live/5"
         />
         <QuickLinkCard
           to="/teams"
-          icon="👥"
-          title="Team Stats"
-          description="Explore team ratings and records"
+          icon="📊"
+          title="Team Statistics"
+          description="View all-time stats, ratings, and performance"
+          color="from-primary/20 to-primary/5"
+        />
+        <QuickLinkCard
+          to="/fixtures"
+          icon="📅"
+          title="Match History"
+          description="Browse all completed fixtures and results"
+          color="from-accent/20 to-accent/5"
         />
       </div>
     </div>
   )
 }
 
-function Section({ title, link, children, className = '' }) {
+function QuickStatCard({ icon, value, label }) {
+  return (
+    <div className="bg-card rounded-2xl border border-border p-4 text-center">
+      <span className="text-2xl mb-2 block">{icon}</span>
+      <p className="text-2xl font-bold text-text">{value.toLocaleString()}</p>
+      <p className="text-sm text-text-muted">{label}</p>
+    </div>
+  )
+}
+
+function Section({ title, subtitle, link, children, className = '' }) {
   return (
     <section className={className}>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-text">{title}</h2>
+      <div className="flex items-end justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-text">{title}</h2>
+          {subtitle && <p className="text-text-muted text-sm mt-1">{subtitle}</p>}
+        </div>
         {link && (
           <Link 
             to={link} 
-            className="text-sm text-primary hover:text-primary-light transition-colors"
+            className="text-sm text-primary hover:text-primary-light transition-colors font-medium"
           >
             View All →
           </Link>
@@ -191,12 +288,14 @@ function EmptyState({ message }) {
   )
 }
 
-function QuickLinkCard({ to, icon, title, description }) {
+function QuickLinkCard({ to, icon, title, description, color }) {
   return (
     <Link to={to}>
-      <div className="card card-hover h-full">
-        <span className="text-3xl mb-3 block">{icon}</span>
-        <h3 className="font-bold text-text mb-1">{title}</h3>
+      <div className={`
+        card card-hover h-full bg-gradient-to-br ${color}
+      `}>
+        <span className="text-4xl mb-4 block">{icon}</span>
+        <h3 className="font-bold text-text text-lg mb-2">{title}</h3>
         <p className="text-sm text-text-muted">{description}</p>
       </div>
     </Link>

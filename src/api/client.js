@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'https://jwd1.xyz/api',
+  baseURL: 'http://77.68.4.18:9001/api',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -238,6 +238,12 @@ export const liveApi = {
   // Get all currently active matches
   getMatches: async () => {
     const { data } = await api.get('/live/matches')
+    return data
+  },
+
+  // Get all fixtures for current tournament (completed + active + upcoming)
+  getFixtures: async () => {
+    const { data } = await api.get('/live/fixtures')
     return data
   },
 

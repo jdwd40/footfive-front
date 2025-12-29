@@ -1,25 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #10b981;
-  --color-primary-dark: #059669;
-  --color-primary-light: #34d399;
-  --color-bg: #0f172a;
-  --color-card: #1e293b;
-  --color-card-hover: #334155;
-  --color-text: #f8fafc;
-  --color-text-muted: #94a3b8;
-  --color-border: #334155;
-  --color-win: #22c55e;
-  --color-draw: #eab308;
-  --color-loss: #ef4444;
+  /* Core palette - Deep navy with electric accents */
+  --color-primary: #00e5a0;
+  --color-primary-dark: #00c288;
+  --color-primary-light: #4dffc3;
+  --color-accent: #ff6b35;
+  --color-gold: #ffd700;
+  --color-bg: #0a0e17;
+  --color-bg-elevated: #111827;
+  --color-card: #151d2e;
+  --color-card-hover: #1c2842;
+  --color-text: #f0f4f8;
+  --color-text-muted: #7c8ba1;
+  --color-border: #2a3650;
+  --color-win: #00e5a0;
+  --color-draw: #ffd700;
+  --color-loss: #ff4d6a;
+  --color-live: #ff4d6a;
+  
+  /* Typography */
   --font-display: "Bebas Neue", "Oswald", system-ui, sans-serif;
-  --font-body: "DM Sans", "Inter", system-ui, sans-serif;
+  --font-body: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
 @layer base {
+  @font-face {
+    font-family: 'Space Grotesk';
+    src: url('https://fonts.gstatic.com/s/spacegrotesk/v15/V8mQoQDjQSkFtoMM3T6r8E7mF71Q-gOoraIAEj7oUXskPMA.woff2') format('woff2');
+    font-weight: 300 700;
+    font-display: swap;
+  }
+
   body {
     @apply bg-bg text-text font-body antialiased;
+    font-feature-settings: 'ss01' on, 'ss02' on;
   }
 
   * {
@@ -27,16 +43,16 @@
   }
 
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-bg;
+    @apply bg-transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-card-hover rounded-full;
+    @apply bg-border rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -46,31 +62,36 @@
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 ease-out;
+    @apply px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 ease-out tracking-wide;
   }
 
   .btn-primary {
-    @apply bg-primary text-bg hover:bg-primary-dark active:scale-95;
+    @apply bg-primary text-bg hover:bg-primary-light active:scale-95 shadow-lg shadow-primary/25;
   }
 
   .btn-secondary {
     @apply bg-card text-text hover:bg-card-hover border border-border;
   }
 
+  .btn-ghost {
+    @apply bg-transparent text-text-muted hover:text-text hover:bg-card;
+  }
+
   .card {
-    @apply bg-card rounded-xl border border-border p-4 transition-all duration-200;
+    @apply bg-card rounded-2xl border border-border p-5 transition-all duration-200;
   }
 
   .card-hover {
-    @apply hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10;
+    @apply hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-0.5;
   }
 
   .badge {
-    @apply px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide;
+    @apply px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider;
   }
 
   .badge-live {
-    @apply bg-red-500/20 text-red-400 animate-pulse;
+    @apply bg-live/20 text-live;
+    animation: pulse-live 2s ease-in-out infinite;
   }
 
   .badge-scheduled {
@@ -78,48 +99,118 @@
   }
 
   .badge-completed {
-    @apply bg-green-500/20 text-green-400;
+    @apply bg-primary/20 text-primary;
+  }
+
+  .badge-round {
+    @apply bg-accent/20 text-accent;
   }
 
   .skeleton {
-    @apply animate-pulse bg-card-hover rounded;
+    @apply animate-pulse bg-card-hover rounded-xl;
   }
 
   .stat-bar {
-    @apply h-2 rounded-full bg-card-hover overflow-hidden;
+    @apply h-1.5 rounded-full bg-border/50 overflow-hidden;
   }
 
   .stat-bar-fill {
-    @apply h-full rounded-full transition-all duration-500 ease-out;
+    @apply h-full rounded-full transition-all duration-700 ease-out;
   }
 
-  .glow {
-    @apply shadow-lg shadow-primary/25;
+  .glow-primary {
+    box-shadow: 0 0 40px rgba(0, 229, 160, 0.15), 0 0 80px rgba(0, 229, 160, 0.1);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 40px rgba(255, 107, 53, 0.15), 0 0 80px rgba(255, 107, 53, 0.1);
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 40px rgba(255, 215, 0, 0.2), 0 0 80px rgba(255, 215, 0, 0.1);
+  }
+
+  /* Glass morphism */
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border-white/5;
+  }
+
+  /* Score display */
+  .score-display {
+    @apply font-mono font-bold tabular-nums;
+  }
+
+  /* Tournament bracket connector */
+  .bracket-line {
+    @apply absolute bg-border;
+  }
+
+  /* Round indicator */
+  .round-indicator {
+    @apply relative flex items-center justify-center;
+  }
+
+  .round-indicator::before {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-primary/20;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  /* Match card live state */
+  .match-live {
+    @apply border-live/40 shadow-lg shadow-live/10;
+  }
+
+  .match-live::before {
+    content: '';
+    @apply absolute inset-0 rounded-2xl bg-live/5;
+    animation: pulse-glow 2s ease-in-out infinite;
   }
 }
 
 @layer utilities {
   .text-gradient {
-    @apply bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-primary via-primary-light to-primary bg-clip-text text-transparent;
+  }
+
+  .text-gradient-gold {
+    @apply bg-gradient-to-r from-yellow-400 via-gold to-yellow-400 bg-clip-text text-transparent;
   }
 
   .animate-slide-up {
-    animation: slideUp 0.3s ease-out;
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .animate-fade-in {
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.4s ease-out;
   }
 
   .animate-scale-in {
-    animation: scaleIn 0.2s ease-out;
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+
+  .animate-bounce-in {
+    animation: bounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .animate-confetti {
+    animation: confetti 1s ease-out forwards;
+  }
+
+  .stagger-1 { animation-delay: 50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+  .stagger-5 { animation-delay: 250ms; }
+  .stagger-6 { animation-delay: 300ms; }
+  .stagger-7 { animation-delay: 350ms; }
+  .stagger-8 { animation-delay: 400ms; }
 }
 
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -135,10 +226,76 @@
 @keyframes scaleIn {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.9);
   }
   to {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes confetti {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+@keyframes trophy-shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Trophy shine effect */
+.trophy-shine {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 215, 0, 0.3) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: trophy-shine 3s ease-in-out infinite;
 }

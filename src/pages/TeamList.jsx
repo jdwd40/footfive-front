@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { teamsApi } from '../api/client'
 import TeamCard from '../components/teams/TeamCard'
-import LoadingSpinner from '../components/common/LoadingSpinner'
 import ErrorDisplay from '../components/common/ErrorDisplay'
 import { SkeletonList } from '../components/common/SkeletonCard'
 
@@ -44,6 +43,8 @@ export default function TeamList() {
           return (b.attack_rating || 0) - (a.attack_rating || 0)
         case 'defense':
           return (b.defense_rating || 0) - (a.defense_rating || 0)
+        case 'goals':
+          return (b.goals_for || 0) - (a.goals_for || 0)
         case 'name':
           return a.team_name?.localeCompare(b.team_name)
         default:
@@ -55,9 +56,9 @@ export default function TeamList() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-text mb-2">Teams</h1>
+        <h1 className="text-3xl font-bold text-text mb-2">Team Statistics</h1>
         <p className="text-text-muted">
-          Top 16 teams competing in the J-Cup
+          Browse all teams competing in the tournament. Click on any team to view detailed statistics.
         </p>
       </div>
 
@@ -71,10 +72,10 @@ export default function TeamList() {
               placeholder="Search teams..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 pl-10 bg-card border border-border rounded-lg text-text placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
+              className="w-full px-4 py-3 pl-11 bg-card border border-border rounded-xl text-text placeholder-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all"
             />
             <svg 
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" 
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -88,13 +89,14 @@ export default function TeamList() {
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value)}
-          className="px-4 py-2 bg-card border border-border rounded-lg text-text focus:outline-none focus:border-primary cursor-pointer"
+          className="px-4 py-3 bg-card border border-border rounded-xl text-text focus:outline-none focus:border-primary cursor-pointer min-w-[180px]"
         >
-          <option value="cups">Sort by Trophies</option>
-          <option value="wins">Sort by Wins</option>
-          <option value="attack">Sort by Attack</option>
-          <option value="defense">Sort by Defense</option>
-          <option value="name">Sort by Name</option>
+          <option value="cups">🏆 Sort by Trophies</option>
+          <option value="wins">✅ Sort by Wins</option>
+          <option value="goals">⚽ Sort by Goals</option>
+          <option value="attack">⚔️ Sort by Attack</option>
+          <option value="defense">🛡️ Sort by Defense</option>
+          <option value="name">🔤 Sort by Name</option>
         </select>
       </div>
 
@@ -104,10 +106,11 @@ export default function TeamList() {
       ) : error ? (
         <ErrorDisplay message={error} onRetry={fetchTeams} />
       ) : filteredTeams.length === 0 ? (
-        <div className="text-center py-12">
-          <span className="text-4xl mb-4 block">🔍</span>
+        <div className="text-center py-16 card">
+          <span className="text-5xl mb-4 block">🔍</span>
+          <p className="text-xl text-text mb-2">No teams found</p>
           <p className="text-text-muted">
-            {searchQuery ? 'No teams match your search' : 'No teams found'}
+            {searchQuery ? 'Try a different search term' : 'No teams available'}
           </p>
         </div>
       ) : (
@@ -115,10 +118,10 @@ export default function TeamList() {
           {filteredTeams.map((team, index) => (
             <div 
               key={team.team_name} 
-              className="animate-fade-in"
-              style={{ animationDelay: `${index * 50}ms` }}
+              className="animate-slide-up"
+              style={{ animationDelay: `${index * 40}ms` }}
             >
-              <TeamCard team={team} />
+              <TeamCard team={team} rank={sortBy === 'cups' ? index + 1 : null} />
             </div>
           ))}
         </div>
@@ -126,22 +129,26 @@ export default function TeamList() {
 
       {/* Stats Summary */}
       {!loading && !error && teams.length > 0 && (
-        <div className="mt-8 p-4 bg-card rounded-xl border border-border">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-            <StatItem 
+        <div className="mt-10 p-6 bg-gradient-to-br from-primary/5 via-card to-accent/5 rounded-2xl border border-border">
+          <h3 className="text-lg font-bold text-text mb-4">📊 Global Statistics</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <GlobalStat 
               label="Total Teams" 
               value={teams.length} 
+              icon="👥"
             />
-            <StatItem 
+            <GlobalStat 
               label="Total Wins" 
               value={teams.reduce((sum, t) => sum + (t.wins || 0), 0)} 
+              icon="✅"
             />
-            <StatItem 
+            <GlobalStat 
               label="Total Goals" 
               value={teams.reduce((sum, t) => sum + (t.goals_for || 0), 0)} 
+              icon="⚽"
             />
-            <StatItem 
-              label="Trophies" 
+            <GlobalStat 
+              label="Championships" 
               value={teams.reduce((sum, t) => sum + (t.cups_won || 0), 0)} 
               icon="🏆"
             />
@@ -152,15 +159,12 @@ export default function TeamList() {
   )
 }
 
-function StatItem({ label, value, icon }) {
+function GlobalStat({ label, value, icon }) {
   return (
-    <div>
-      <div className="text-2xl font-bold text-primary">
-        {icon && <span className="mr-1">{icon}</span>}
-        {value}
-      </div>
+    <div className="text-center p-4 rounded-xl bg-card/50">
+      <span className="text-2xl mb-2 block">{icon}</span>
+      <div className="text-2xl font-bold text-primary">{value.toLocaleString()}</div>
       <div className="text-sm text-text-muted">{label}</div>
     </div>
   )
 }
-

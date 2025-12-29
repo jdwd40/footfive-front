@@ -54,6 +54,20 @@ const STATE_TO_NEXT_ROUND = {
   FINAL_BREAK: 'Final',
 }
 
+const ROUND_NORMALIZATION = [
+  { keys: ['roundof16', 'r16', 'round16', 'roundofsixteen'], value: 'Round of 16' },
+  { keys: ['quarterfinals', 'quarter-finals', 'quarterfinal', 'quarter finals', 'qf'], value: 'Quarter-finals' },
+  { keys: ['semifinals', 'semi-finals', 'semifinal', 'semi finals', 'sf'], value: 'Semi-finals' },
+  { keys: ['final', 'finals'], value: 'Final' },
+]
+
+function normalizeRound(name) {
+  if (!name) return null
+  const key = name.toString().toLowerCase().replace(/[\s-]/g, '')
+  const found = ROUND_NORMALIZATION.find(entry => entry.keys.includes(key))
+  return found ? found.value : null
+}
+
 export const useLiveStore = create((set, get) => ({
   // Connection state
   connected: false,
@@ -66,14 +80,20 @@ export const useLiveStore = create((set, get) => ({
   
   // Tournament state
   tournament: null,
+  // Last completed tournament snapshot (kept until next tournament starts)
+  lastCompletedTournament: null,
+  lastCompletedFixtures: [],
   
-  // Active matches (currently being played)
+  // All fixtures for current tournament (completed + active + upcoming)
+  fixtures: [],
+  
+  // Active matches (currently being played) - kept for backward compatibility
   matches: [],
   
-  // Completed matches in current tournament (grouped by round)
+  // Completed matches in current tournament - kept for backward compatibility
   completedMatches: [],
   
-  // Upcoming fixtures for next round (during breaks)
+  // Upcoming fixtures for next round (during breaks) - kept for backward compatibility
   upcomingFixtures: [],
   
   // Recent events buffer (all events from current round)
@@ -88,34 +108,87 @@ export const useLiveStore = create((set, get) => ({
   setConnecting: (connecting) => set({ connecting }),
   setError: (error) => set({ error }),
 
-  // Fetch full snapshot (status + matches)
+  // Fetch full snapshot (status + fixtures)
   fetchSnapshot: async () => {
     set({ isLoading: true, error: null })
     
     try {
-      const [statusRes, matchesRes] = await Promise.all([
+      const [statusRes, fixturesRes] = await Promise.all([
         liveApi.getStatus(),
-        liveApi.getMatches(),
+        liveApi.getFixtures(),
       ])
       
-      set({
-        simulation: statusRes.simulation,
-        tournament: statusRes.tournament,
-        matches: matchesRes.matches || [],
-        isLoading: false,
-        isInitialLoad: false,
-        lastUpdated: Date.now(),
-        error: null,
+      const allFixtures = fixturesRes.fixtures || []
+      const newTournament = statusRes.tournament
+      const newTournamentId = newTournament?.tournamentId
+      const newState = newTournament?.state
+      
+      set(state => {
+        let tournamentToSet = newTournament
+        let fixturesToSet = allFixtures
+        let lastCompletedTournament = state.lastCompletedTournament
+        let lastCompletedFixtures = state.lastCompletedFixtures
+
+        const lastCompletedId = state.lastCompletedTournament?.tournamentId
+
+        // If new tournament started (different id and active/setup), clear last completed cache
+        if (newTournamentId && lastCompletedId && newTournamentId !== lastCompletedId && newState && newState !== 'RESULTS' && newState !== 'COMPLETE') {
+          lastCompletedTournament = null
+          lastCompletedFixtures = []
+        }
+
+        // If tournament completed, cache it
+        if (newState === 'RESULTS' || newState === 'COMPLETE') {
+          lastCompletedTournament = newTournament
+          lastCompletedFixtures = fixturesToSet
+        }
+
+        // If system reports IDLE but we have a completed tournament, keep showing last completed until next starts
+        if ((!newTournament || newState === 'IDLE') && lastCompletedTournament) {
+          tournamentToSet = lastCompletedTournament
+          fixturesToSet = lastCompletedFixtures.length ? lastCompletedFixtures : fixturesToSet
+        }
+
+        // Separate active matches from completed for backward compatibility
+        const activeMatches = fixturesToSet.filter(m => m.state !== 'FINISHED' && !m.isFinished)
+        const finishedMatches = fixturesToSet.filter(m => m.state === 'FINISHED' || m.isFinished)
+
+        // Determine next round fixtures (scheduled) during breaks/after round
+        const nextRoundName = normalizeRound(STATE_TO_NEXT_ROUND[tournamentToSet?.state] || STATE_TO_NEXT_ROUND[newState])
+        const upcomingFixtures = nextRoundName
+          ? fixturesToSet.filter(m => normalizeRound(m.round) === nextRoundName && (m.state === 'SCHEDULED' || !m.isFinished))
+          : []
+
+        return {
+          simulation: statusRes.simulation,
+          tournament: tournamentToSet,
+          fixtures: fixturesToSet,
+          matches: activeMatches,
+          completedMatches: finishedMatches,
+          upcomingFixtures,
+          lastCompletedTournament,
+          lastCompletedFixtures,
+          isLoading: false,
+          isInitialLoad: false,
+          lastUpdated: Date.now(),
+          error: null,
+        }
       })
       
-      return { status: statusRes, matches: matchesRes }
+      return { status: statusRes, fixtures: fixturesRes }
     } catch (err) {
+      console.error('[LiveStore] fetchSnapshot error:', err)
+      
+      // Try fallback - set a default IDLE state so the page still renders
       set({ 
+        tournament: { state: 'IDLE', tournamentId: null },
+        fixtures: [],
+        matches: [],
+        completedMatches: [],
         error: err.message || 'Failed to fetch live data',
         isLoading: false,
         isInitialLoad: false,
       })
-      throw err
     }
   },
 
@@ -158,9 +231,14 @@ export const useLiveStore = create((set, get) => ({
       case 'goal':
       case 'penalty_scored':
       case 'shootout_goal':
-        // Update match score
+        // Update match score in fixtures array
         if (fixtureId && score) {
           set(state => ({
+            fixtures: state.fixtures.map(m => 
+              m.fixtureId === fixtureId 
+                ? { ...m, score, penaltyScore: penaltyScore || m.penaltyScore }
+                : m
+            ),
             matches: state.matches.map(m => 
               m.fixtureId === fixtureId 
                 ? { ...m, score, penaltyScore: penaltyScore || m.penaltyScore }
@@ -175,7 +253,7 @@ export const useLiveStore = create((set, get) => ({
       case 'fulltime':
       case 'extra_time_start':
       case 'shootout_start':
-        // Update match state
+        // Update match state in fixtures array
         if (fixtureId) {
           const stateMap = {
             halftime: 'HALFTIME',
@@ -187,6 +265,9 @@ export const useLiveStore = create((set, get) => ({
           const newState = stateMap[type]
           if (newState) {
             set(state => ({
+              fixtures: state.fixtures.map(m =>
+                m.fixtureId === fixtureId ? { ...m, state: newState, isFinished: newState === 'FINISHED' } : m
+              ),
               matches: state.matches.map(m =>
                 m.fixtureId === fixtureId ? { ...m, state: newState } : m
               )
@@ -196,46 +277,59 @@ export const useLiveStore = create((set, get) => ({
         break
         
       case 'match_start':
-        // Add match if not present, or update state
+        // Update match state in fixtures array
         set(state => {
-          const exists = state.matches.some(m => m.fixtureId === fixtureId)
-          if (!exists && event.homeTeam && event.awayTeam) {
+          const fixtureExists = state.fixtures.some(m => m.fixtureId === fixtureId)
+          if (fixtureExists) {
             return {
-              matches: [...state.matches, {
-                fixtureId,
-                state: 'FIRST_HALF',
-                minute: 0,
-                score: { home: 0, away: 0 },
-                penaltyScore: { home: 0, away: 0 },
-                homeTeam: event.homeTeam,
-                awayTeam: event.awayTeam,
-                isFinished: false,
-              }]
+              fixtures: state.fixtures.map(m =>
+                m.fixtureId === fixtureId ? { ...m, state: 'FIRST_HALF', isFinished: false } : m
+              ),
+              matches: state.matches.map(m =>
+                m.fixtureId === fixtureId ? { ...m, state: 'FIRST_HALF' } : m
+              )
             }
           }
-          return {
-            matches: state.matches.map(m =>
-              m.fixtureId === fixtureId ? { ...m, state: 'FIRST_HALF' } : m
-            )
+          // If fixture doesn't exist and we have team data, add it
+          if (event.homeTeam && event.awayTeam) {
+            const newFixture = {
+              fixtureId,
+              state: 'FIRST_HALF',
+              minute: 0,
+              score: { home: 0, away: 0 },
+              penaltyScore: { home: 0, away: 0 },
+              homeTeam: event.homeTeam,
+              awayTeam: event.awayTeam,
+              isFinished: false,
+              round: state.tournament?.currentRound || 'Round of 16',
+            }
+            return {
+              fixtures: [...state.fixtures, newFixture],
+              matches: [...state.matches, newFixture]
+            }
           }
+          return state
         })
         break
         
       case 'match_end':
-        // Move match to completed, remove from active
+        // Update fixture to finished state
         set(state => {
-          const match = state.matches.find(m => m.fixtureId === fixtureId)
-          if (match) {
-            const completedMatch = { 
-              ...match, 
+          const fixture = state.fixtures.find(m => m.fixtureId === fixtureId)
+          if (fixture) {
+            const updatedFixture = { 
+              ...fixture, 
               isFinished: true, 
               state: 'FINISHED',
-              score: score || match.score,
-              penaltyScore: penaltyScore || match.penaltyScore,
+              score: score || fixture.score,
+              penaltyScore: penaltyScore || fixture.penaltyScore,
             }
             return {
+              fixtures: state.fixtures.map(m => m.fixtureId === fixtureId ? updatedFixture : m),
               matches: state.matches.filter(m => m.fixtureId !== fixtureId),
-              completedMatches: [...state.completedMatches, completedMatch],
+              completedMatches: state.completedMatches.some(m => m.fixtureId === fixtureId)
+                ? state.completedMatches.map(m => m.fixtureId === fixtureId ? updatedFixture : m)
+                : [...state.completedMatches, updatedFixture],
             }
           }
           return state
@@ -244,21 +338,18 @@ export const useLiveStore = create((set, get) => ({
         
       case 'round_start':
         // Refetch matches for new round
-        get().fetchMatches()
-        if (event.round) {
-          set(state => ({
-            tournament: state.tournament 
-              ? { ...state.tournament, currentRound: event.round }
-              : state.tournament
-          }))
-        }
+        get().fetchSnapshot()
         break
         
       case 'round_complete':
-        // Update tournament state
-        if (event.round) {
-          get().fetchSnapshot()
-        }
+        // Refetch to get updated tournament state
+        get().fetchSnapshot()
+        break
+      
+      case 'state_change':
+      case 'tournament_state':
+        // Tournament state changed - refetch everything
+        get().fetchSnapshot()
         break
         
       case 'tournament_end':
@@ -284,6 +375,9 @@ export const useLiveStore = create((set, get) => ({
   // Update single match (from minute tick or detail fetch)
   updateMatch: (fixtureId, updates) => {
     set(state => ({
+      fixtures: state.fixtures.map(m =>
+        m.fixtureId === fixtureId ? { ...m, ...updates } : m
+      ),
       matches: state.matches.map(m =>
         m.fixtureId === fixtureId ? { ...m, ...updates } : m
       )
@@ -337,14 +431,16 @@ export const useLiveStore = create((set, get) => ({
 
   // Get all matches for bracket (active + completed)
   getAllBracketMatches: () => {
-    const { matches, completedMatches } = get()
-    return [...completedMatches, ...matches]
+    const { fixtures, matches, completedMatches } = get()
+    // Prefer fixtures array if available, otherwise fall back to combined arrays
+    return fixtures.length > 0 ? fixtures : [...completedMatches, ...matches]
   },
 
   // Get completed matches grouped by round
   getMatchesByRound: () => {
-    const { completedMatches, matches } = get()
-    const allMatches = [...completedMatches, ...matches]
+    const { fixtures, completedMatches, matches } = get()
+    // Prefer fixtures array if available
+    const allMatches = fixtures.length > 0 ? fixtures : [...completedMatches, ...matches]
     
     const grouped = {}
     ROUND_ORDER.forEach(round => {
@@ -359,8 +455,9 @@ export const useLiveStore = create((set, get) => ({
 
   // Get matches for a specific round
   getMatchesForRound: (roundName) => {
-    const { completedMatches, matches } = get()
-    const allMatches = [...completedMatches, ...matches]
+    const { fixtures, completedMatches, matches } = get()
+    // Prefer fixtures array if available
+    const allMatches = fixtures.length > 0 ? fixtures : [...completedMatches, ...matches]
     
     return allMatches.filter(m => 
       m.round === roundName || 
@@ -406,6 +503,9 @@ export const useLiveStore = create((set, get) => ({
     lastUpdated: null,
     simulation: null,
     tournament: null,
+    lastCompletedTournament: null,
+    lastCompletedFixtures: [],
+    fixtures: [],
     matches: [],
     completedMatches: [],
     upcomingFixtures: [],
