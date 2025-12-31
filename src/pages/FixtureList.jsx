@@ -91,36 +91,45 @@ export default function FixtureList() {
     return () => clearInterval(pollInterval)
   }, [fetchSnapshot])
 
-  // Prefer live tournament; if idle, fall back to last completed tournament/results
-  const liveTournament = tournament?.state && tournament.state !== 'IDLE'
-    ? tournament
-    : (lastCompletedTournament || tournament)
+  // Determine if we're in a waiting state (SETUP/IDLE)
+  const isWaitingState = !tournament?.state || tournament?.state === 'IDLE' || tournament?.state === 'SETUP'
+  
+  // For display purposes, prefer showing last completed tournament during waiting states
+  const displayTournament = isWaitingState && lastCompletedTournament 
+    ? lastCompletedTournament 
+    : tournament
 
-  // Use fixtures array from store; if empty but we have last completed, use that
-  const baseFixtures = fixtures.length > 0 ? fixtures : (liveTournament === lastCompletedTournament ? (lastCompletedFixtures || []) : [])
-  const allMatches = baseFixtures.length > 0 ? baseFixtures : [...(completedMatches || []), ...(matches || [])]
+  // Use fixtures from current tournament, or fall back to last completed
+  const baseFixtures = fixtures.length > 0 
+    ? fixtures 
+    : (lastCompletedFixtures?.length > 0 ? lastCompletedFixtures : [])
+  const allMatches = baseFixtures.length > 0 
+    ? baseFixtures 
+    : [...(completedMatches || []), ...(matches || [])]
 
   // Debug logging
   useEffect(() => {
     console.log('[Fixtures] State:', {
-      tournamentState: liveTournament?.state,
-      tournamentId: liveTournament?.tournamentId,
+      tournamentState: tournament?.state,
+      tournamentId: tournament?.tournamentId,
       fixtures: fixtures?.length,
       lastCompletedFixtures: lastCompletedFixtures?.length,
       activeMatches: matches?.length,
       completedMatches: completedMatches?.length,
       totalMatches: allMatches.length,
       upcomingFixtures: upcomingFixtures?.length,
+      isWaitingState,
     })
-  }, [liveTournament, fixtures, lastCompletedFixtures, matches, completedMatches, allMatches.length, upcomingFixtures])
+  }, [tournament, fixtures, lastCompletedFixtures, matches, completedMatches, allMatches.length, upcomingFixtures, isWaitingState])
   
-  // Get current round from tournament state
-  const currentRound = normalizeRound(TOURNAMENT_STATE_TO_ROUND[liveTournament?.state])
-  const isRoundActive = ['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(liveTournament?.state)
-  const isBreak = liveTournament?.state?.includes('BREAK') || liveTournament?.state === 'SETUP'
+  // Get current round from actual tournament state (not display tournament)
+  const currentRound = normalizeRound(TOURNAMENT_STATE_TO_ROUND[tournament?.state])
+  const isRoundActive = ['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(tournament?.state)
+  const isBreak = tournament?.state?.includes('BREAK') || tournament?.state === 'SETUP'
   
-  // Determine next round during breaks
-  const nextRound = isBreak ? normalizeRound(getNextRound(liveTournament?.state)) : null
+  // Determine next round - now works for both active rounds AND breaks
+  // This allows showing upcoming fixtures even while current round is being played
+  const nextRound = normalizeRound(getNextRound(tournament?.state))
 
   // Group matches by round
   const matchesByRound = ROUNDS_ORDER.reduce((acc, round) => {
@@ -237,29 +246,9 @@ export default function FixtureList() {
         </div>
       )}
 
-      {/* Debug Info (temporary) */}
-      {allMatches.length === 0 && liveTournament && (
-        <div className="mb-6 p-4 rounded-xl bg-card border border-border text-sm">
-          <p className="font-bold text-text mb-2">🔍 Debug Info:</p>
-          <div className="space-y-1 text-text-muted font-mono text-xs">
-            <p>• Tournament State: <span className="text-primary">{liveTournament.state}</span></p>
-            <p>• Tournament ID: <span className="text-text">{liveTournament.tournamentId}</span></p>
-            <p>• All Fixtures: <span className="text-text">{fixtures?.length || 0}</span></p>
-            <p>• Active Matches: <span className="text-text">{matches?.length || 0}</span></p>
-            <p>• Completed Matches: <span className="text-text">{completedMatches?.length || 0}</span></p>
-            <p>• Current Round: <span className="text-text">{liveTournament.currentRound || 'N/A'}</span></p>
-            <p>• Teams Remaining: <span className="text-text">{liveTournament.teamsRemaining || 'N/A'}</span></p>
-          </div>
-          <p className="text-xs text-text-muted mt-2">
-            {liveTournament.state === 'SETUP' && 'Tournament is setting up - matches will appear when round starts'}
-            {liveTournament.state?.includes('BREAK') && 'Between rounds - next round will start soon'}
-            {liveTournament.state === 'IDLE' && 'Tournament hasn\'t started yet'}
-          </p>
-        </div>
-      )}
 
-      {/* Current/Next Round - Featured Section */}
-      {(isRoundActive || isBreak) && (
+      {/* Current/Next Round - Featured Section (only show if we have matches or if actively playing) */}
+      {(isRoundActive || (isBreak && (allMatches.length > 0 || upcomingFixtures?.length > 0))) && (
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">
             {isRoundActive && <span className="w-3 h-3 rounded-full bg-live animate-pulse" />}
@@ -275,6 +264,21 @@ export default function FixtureList() {
             {(() => {
               const roundToShow = isRoundActive ? currentRound : nextRound
               const roundMatches = matchesByRound[roundToShow] || []
+              
+              // During breaks, if no matches for next round, show upcoming fixtures if available
+              if (roundMatches.length === 0 && !isRoundActive && upcomingFixtures?.length > 0) {
+                return (
+                  <div className={`grid gap-3 ${
+                    upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
+                    upcomingFixtures.length === 2 ? 'sm:grid-cols-2' :
+                    'sm:grid-cols-2 lg:grid-cols-4'
+                  }`}>
+                    {upcomingFixtures.map((match, idx) => (
+                      <UpcomingMatchCard key={match.fixtureId || idx} match={match} />
+                    ))}
+                  </div>
+                )
+              }
               
               if (roundMatches.length === 0) {
                 return (
@@ -301,6 +305,59 @@ export default function FixtureList() {
         </div>
       )}
 
+      {/* Coming Up Next - Show next round fixtures during active rounds */}
+      {isRoundActive && nextRound && upcomingFixtures?.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xl">📋</span>
+            <h2 className="text-xl font-bold text-text">
+              Coming Up: {nextRound}
+            </h2>
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-semibold">
+              Next Round
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-amber-500/20 bg-card/50 p-4">
+            <div className={`grid gap-3 ${
+              upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
+              upcomingFixtures.length === 2 ? 'sm:grid-cols-2' :
+              'sm:grid-cols-2 lg:grid-cols-4'
+            }`}>
+              {upcomingFixtures.map((match, idx) => (
+                <UpcomingMatchCard key={match.fixtureId || idx} match={match} />
+              ))}
+            </div>
+            <p className="text-center text-xs text-text-muted mt-4">
+              These matches will start after the current round completes
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Show last tournament results during SETUP/IDLE if we have them */}
+      {isWaitingState && lastCompletedTournament && allMatches.length > 0 && (
+        <div className="mb-8 bg-gradient-to-br from-primary/5 via-card to-primary/5 rounded-2xl border border-primary/20 p-4">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-xl">🏆</span>
+            <h2 className="text-lg font-bold text-text">
+              Previous Tournament #{lastCompletedTournament.tournamentId}
+            </h2>
+            <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold">
+              Complete
+            </span>
+          </div>
+          {lastCompletedTournament.winner && (
+            <p className="text-sm text-text-muted mb-2">
+              Winner: <span className="text-primary font-semibold">{lastCompletedTournament.winner?.name || lastCompletedTournament.winner}</span>
+              {lastCompletedTournament.runnerUp && (
+                <> • Runner-up: {lastCompletedTournament.runnerUp?.name || lastCompletedTournament.runnerUp}</>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Tournament Winner */}
       {tournament?.winner && (
         <div className="mb-8 bg-gradient-to-br from-gold/10 via-card to-gold/10 rounded-2xl border border-gold/30 p-6 text-center">
@@ -317,10 +374,11 @@ export default function FixtureList() {
         </div>
       )}
 
-      {/* Previous Rounds Results */}
+      {/* Previous Rounds Results - only show if we have matches */}
+      {allMatches.length > 0 && (
       <div className="space-y-6">
         <h2 className="text-lg font-bold text-text-muted uppercase tracking-wider">
-          {allMatches.length > 0 ? 'All Rounds' : 'Tournament Rounds'}
+          All Rounds
         </h2>
 
         {[...ROUNDS_ORDER].reverse().map((round, roundIdx) => {
@@ -409,18 +467,30 @@ export default function FixtureList() {
           )
         })}
       </div>
+      )}
 
-      {/* No Tournament State */}
-      {(!tournament || tournament?.state === 'IDLE') && allMatches.length === 0 && (
+      {/* No Tournament/Waiting State */}
+      {(!tournament || tournament?.state === 'IDLE' || (tournament?.state === 'SETUP' && allMatches.length === 0)) && (
         <div className="text-center py-12 bg-card rounded-2xl border border-border">
-          <span className="text-6xl block mb-4">⏳</span>
-          <h3 className="text-xl font-bold text-text mb-2">Waiting for Tournament</h3>
+          <span className="text-6xl block mb-4">{tournament?.state === 'SETUP' ? '🏟️' : '⏳'}</span>
+          <h3 className="text-xl font-bold text-text mb-2">
+            {tournament?.state === 'SETUP' ? 'Tournament Starting Soon' : 'Waiting for Tournament'}
+          </h3>
           <p className="text-text-muted mb-4">
-            New tournaments start every hour at :55
+            {tournament?.state === 'SETUP' 
+              ? 'Round of 16 fixtures will appear shortly when generated by the backend'
+              : 'New tournaments start every hour at :55'}
           </p>
-          <Link to="/live" className="btn btn-primary">
-            Go to Live Dashboard
-          </Link>
+          <div className="flex justify-center gap-4">
+            <Link to="/live" className="btn btn-primary">
+              Go to Live Dashboard
+            </Link>
+          </div>
+          {tournament?.tournamentId && (
+            <p className="text-xs text-text-muted mt-4">
+              Tournament #{tournament.tournamentId}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -519,12 +589,56 @@ function MatchCard({ match, featured = false }) {
   )
 }
 
+// Upcoming match card - styled differently to indicate these are scheduled
+function UpcomingMatchCard({ match }) {
+  const { fixtureId, homeTeam, awayTeam } = match
+
+  return (
+    <Link
+      to={`/live/${fixtureId}`}
+      className="block p-3 rounded-xl border border-amber-500/20 bg-card/80 hover:border-amber-500/40 transition-all"
+    >
+      {/* Status */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-400">
+          Scheduled
+        </span>
+      </div>
+
+      {/* Teams */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex-1 text-sm font-medium truncate text-text">
+            {homeTeam?.name || 'TBD'}
+          </span>
+          <span className="text-lg font-bold font-mono min-w-[24px] text-right text-text-muted">
+            -
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex-1 text-sm font-medium truncate text-text">
+            {awayTeam?.name || 'TBD'}
+          </span>
+          <span className="text-lg font-bold font-mono min-w-[24px] text-right text-text-muted">
+            -
+          </span>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 // Helper Functions
 function getNextRound(state) {
+  // Map both active rounds and break states to the next round
   const map = {
     SETUP: 'Round of 16',
+    ROUND_OF_16: 'Quarter-finals',
     QF_BREAK: 'Quarter-finals',
+    QUARTER_FINALS: 'Semi-finals',
     SF_BREAK: 'Semi-finals',
+    SEMI_FINALS: 'Final',
     FINAL_BREAK: 'Final',
   }
   return map[state] || null

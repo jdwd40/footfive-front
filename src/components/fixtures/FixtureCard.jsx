@@ -1,6 +1,24 @@
 import { Link } from 'react-router-dom'
 import { formatDate, formatTime, getStatusBadge, formatScore } from '../../utils/formatters'
 
+// Normalize status/state values to lowercase standard format
+function normalizeStatus(status, state) {
+  // Use status if available, otherwise fall back to state
+  const rawValue = status || state
+  if (!rawValue) return 'scheduled'
+  
+  const normalized = rawValue.toLowerCase()
+  
+  // Map state values to status values
+  if (normalized === 'finished') return 'completed'
+  if (normalized === 'scheduled') return 'scheduled'
+  if (['first_half', 'second_half', 'halftime', 'extra_time_1', 'extra_time_2', 'et_halftime', 'penalties'].includes(normalized)) {
+    return 'live'
+  }
+  
+  return normalized
+}
+
 export default function FixtureCard({ fixture, showLink = true }) {
   const {
     fixture_id,
@@ -9,14 +27,17 @@ export default function FixtureCard({ fixture, showLink = true }) {
     home_score,
     away_score,
     status,
+    state,
     scheduled_time,
     round,
     tournament_name
   } = fixture
 
-  const statusBadge = getStatusBadge(status)
-  const isLive = status?.toLowerCase() === 'live'
-  const isCompleted = status?.toLowerCase() === 'completed'
+  // Normalize the status to handle both status and state fields
+  const normalizedStatus = normalizeStatus(status, state)
+  const statusBadge = getStatusBadge(normalizedStatus)
+  const isLive = normalizedStatus === 'live'
+  const isCompleted = normalizedStatus === 'completed'
 
   // Determine winner for styling
   const homeWon = isCompleted && home_score > away_score
@@ -55,7 +76,7 @@ export default function FixtureCard({ fixture, showLink = true }) {
 
         {/* Score */}
         <div className="text-center px-4">
-          {status === 'scheduled' ? (
+          {normalizedStatus === 'scheduled' ? (
             <div className="text-text-muted">
               {scheduled_time ? (
                 <>

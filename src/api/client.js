@@ -52,6 +52,7 @@ const transformFixture = (fixture) => ({
   home_score: fixture.score?.home ?? null,
   away_score: fixture.score?.away ?? null,
   status: fixture.status,
+  state: fixture.state, // Include state field as fallback for status
   scheduled_time: fixture.scheduledAt,
   completed_time: fixture.completedAt,
   round: fixture.round,

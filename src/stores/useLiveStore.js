@@ -68,6 +68,90 @@ function normalizeRound(name) {
   return found ? found.value : null
 }
 
+// Resolve teams from bracket structure for fixtures with null teams
+// This looks at feeder matches (matches whose feedsInto equals this fixture's bracketSlot)
+// and uses the winners from those matches
+function resolveTeamsFromBracket(fixtures) {
+  if (!fixtures || fixtures.length === 0) return fixtures
+  
+  // Build a map of bracketSlot -> fixture for quick lookup
+  const slotToFixture = {}
+  fixtures.forEach(f => {
+    if (f.bracketSlot) {
+      slotToFixture[f.bracketSlot] = f
+    }
+  })
+  
+  // Find feeder matches for each fixture
+  const feedersMap = {} // bracketSlot -> [feeder fixtures]
+  fixtures.forEach(f => {
+    if (f.feedsInto) {
+      if (!feedersMap[f.feedsInto]) {
+        feedersMap[f.feedsInto] = []
+      }
+      feedersMap[f.feedsInto].push(f)
+    }
+  })
+  
+  // Helper to get winner team from a finished match
+  const getWinnerTeam = (match) => {
+    if (!match || !match.isFinished) return null
+    
+    // Use winnerId if available
+    if (match.winnerId) {
+      if (match.homeTeam?.id === match.winnerId) return match.homeTeam
+      if (match.awayTeam?.id === match.winnerId) return match.awayTeam
+    }
+    
+    // Fall back to score comparison
+    const homeScore = (match.score?.home || 0) + (match.penaltyScore?.home || 0) * 0.001
+    const awayScore = (match.score?.away || 0) + (match.penaltyScore?.away || 0) * 0.001
+    
+    if (homeScore > awayScore) return match.homeTeam
+    if (awayScore > homeScore) return match.awayTeam
+    
+    return null
+  }
+  
+  // Resolve teams for fixtures with null homeTeam or awayTeam
+  return fixtures.map(fixture => {
+    // If both teams are already set, no need to resolve
+    if (fixture.homeTeam && fixture.awayTeam) return fixture
+    
+    // Find feeder matches for this fixture
+    const feeders = feedersMap[fixture.bracketSlot] || []
+    if (feeders.length === 0) return fixture
+    
+    // Sort feeders by their bracketSlot to ensure consistent ordering
+    // e.g., R16_1 and R16_2 feed into QF1, where R16_1 winner is home, R16_2 winner is away
+    feeders.sort((a, b) => (a.bracketSlot || '').localeCompare(b.bracketSlot || ''))
+    
+    let resolvedHomeTeam = fixture.homeTeam
+    let resolvedAwayTeam = fixture.awayTeam
+    
+    // First feeder's winner goes to homeTeam
+    if (!resolvedHomeTeam && feeders[0]) {
+      resolvedHomeTeam = getWinnerTeam(feeders[0])
+    }
+    
+    // Second feeder's winner goes to awayTeam
+    if (!resolvedAwayTeam && feeders[1]) {
+      resolvedAwayTeam = getWinnerTeam(feeders[1])
+    }
+    
+    // Return updated fixture if anything changed
+    if (resolvedHomeTeam !== fixture.homeTeam || resolvedAwayTeam !== fixture.awayTeam) {
+      return {
+        ...fixture,
+        homeTeam: resolvedHomeTeam,
+        awayTeam: resolvedAwayTeam,
+      }
+    }
+    
+    return fixture
+  })
+}
+
 export const useLiveStore = create((set, get) => ({
   // Connection state
   connected: false,
@@ -93,7 +177,7 @@ export const useLiveStore = create((set, get) => ({
   // Completed matches in current tournament - kept for backward compatibility
   completedMatches: [],
   
-  // Upcoming fixtures for next round (during breaks) - kept for backward compatibility
+  // Upcoming fixtures for next round (available during both active rounds and breaks)
   upcomingFixtures: [],
   
   // Recent events buffer (all events from current round)
@@ -118,7 +202,9 @@ export const useLiveStore = create((set, get) => ({
         liveApi.getFixtures(),
       ])
       
-      const allFixtures = fixturesRes.fixtures || []
+      const rawFixtures = fixturesRes.fixtures || []
+      // Resolve teams from bracket structure for fixtures with null teams
+      const allFixtures = resolveTeamsFromBracket(rawFixtures)
       const newTournament = statusRes.tournament
       const newTournamentId = newTournament?.tournamentId
       const newState = newTournament?.state
@@ -131,37 +217,51 @@ export const useLiveStore = create((set, get) => ({
 
         const lastCompletedId = state.lastCompletedTournament?.tournamentId
 
-        // If new tournament started (different id and active/setup), clear last completed cache
-        if (newTournamentId && lastCompletedId && newTournamentId !== lastCompletedId && newState && newState !== 'RESULTS' && newState !== 'COMPLETE') {
+        // If tournament completed, cache it immediately
+        if (newState === 'RESULTS' || newState === 'COMPLETE') {
+          lastCompletedTournament = newTournament
+          lastCompletedFixtures = allFixtures.length > 0 ? allFixtures : state.lastCompletedFixtures
+        }
+
+        // Only clear last completed cache when a new tournament actually has matches playing
+        // (not during SETUP/IDLE when we still want to show previous results)
+        const hasActiveMatches = allFixtures.some(m => m.state !== 'FINISHED' && m.state !== 'SCHEDULED' && !m.isFinished)
+        if (newTournamentId && lastCompletedId && newTournamentId !== lastCompletedId && hasActiveMatches) {
           lastCompletedTournament = null
           lastCompletedFixtures = []
         }
 
-        // If tournament completed, cache it
-        if (newState === 'RESULTS' || newState === 'COMPLETE') {
-          lastCompletedTournament = newTournament
-          lastCompletedFixtures = fixturesToSet
-        }
-
-        // If system reports IDLE but we have a completed tournament, keep showing last completed until next starts
-        if ((!newTournament || newState === 'IDLE') && lastCompletedTournament) {
-          tournamentToSet = lastCompletedTournament
-          fixturesToSet = lastCompletedFixtures.length ? lastCompletedFixtures : fixturesToSet
+        // During SETUP or IDLE with no fixtures, keep showing last completed tournament
+        const isWaitingState = newState === 'SETUP' || newState === 'IDLE' || !newState
+        if (isWaitingState && allFixtures.length === 0 && lastCompletedFixtures.length > 0) {
+          // Keep showing last tournament results while waiting
+          fixturesToSet = lastCompletedFixtures
         }
 
         // Separate active matches from completed for backward compatibility
         const activeMatches = fixturesToSet.filter(m => m.state !== 'FINISHED' && !m.isFinished)
         const finishedMatches = fixturesToSet.filter(m => m.state === 'FINISHED' || m.isFinished)
 
-        // Determine next round fixtures (scheduled) during breaks/after round
-        const nextRoundName = normalizeRound(STATE_TO_NEXT_ROUND[tournamentToSet?.state] || STATE_TO_NEXT_ROUND[newState])
+        // Determine next round fixtures - always show upcoming fixtures for the next round
+        // This works during both active rounds AND break periods
+        const currentState = newState || tournamentToSet?.state
+        const nextRoundName = normalizeRound(STATE_TO_NEXT_ROUND[currentState])
+        
+        // Filter for SCHEDULED fixtures in the next round only
+        // Only include fixtures that haven't started (SCHEDULED state and no score)
         const upcomingFixtures = nextRoundName
-          ? fixturesToSet.filter(m => normalizeRound(m.round) === nextRoundName && (m.state === 'SCHEDULED' || !m.isFinished))
+          ? allFixtures.filter(m => {
+              const matchRound = normalizeRound(m.round)
+              const hasNoScore = (!m.score?.home && !m.score?.away) || (m.score?.home === 0 && m.score?.away === 0)
+              const isScheduled = m.state === 'SCHEDULED' || (!m.state && hasNoScore)
+              // Only include fixtures from the next round that are scheduled (not started yet)
+              return matchRound === nextRoundName && isScheduled && !m.isFinished
+            })
           : []
 
         return {
           simulation: statusRes.simulation,
-          tournament: tournamentToSet,
+          tournament: newTournament, // Always use actual tournament state for header
           fixtures: fixturesToSet,
           matches: activeMatches,
           completedMatches: finishedMatches,
@@ -422,7 +522,7 @@ export const useLiveStore = create((set, get) => ({
     return STATE_TO_ROUND[tournament.state] || tournament.currentRound
   },
 
-  // Get next round name (for break periods)
+  // Get next round name (works for both active rounds and break periods)
   getNextRound: () => {
     const { tournament } = get()
     if (!tournament?.state) return null
@@ -492,7 +592,7 @@ export const useLiveStore = create((set, get) => ({
     )
   },
 
-  // Set upcoming fixtures (during breaks)
+  // Set upcoming fixtures
   setUpcomingFixtures: (fixtures) => set({ upcomingFixtures: fixtures }),
 
   // Reset store
