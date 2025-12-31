@@ -24,7 +24,17 @@ export default function LiveMatchCard({ match, compact = false }) {
     isFinished 
   } = match
 
-  const stateConfig = MATCH_STATE_CONFIG[state] || MATCH_STATE_CONFIG.SCHEDULED
+  // Determine if match has scores (even 0-0 counts as having a score)
+  const hasScore = score?.home != null || score?.away != null
+  const matchIsFinished = state === 'FINISHED' || isFinished || (hasScore && state !== 'SCHEDULED')
+  
+  // Get state config - don't fall back to SCHEDULED if match has scores
+  const getStateConfig = () => {
+    if (MATCH_STATE_CONFIG[state]) return MATCH_STATE_CONFIG[state]
+    if (matchIsFinished || hasScore) return MATCH_STATE_CONFIG.FINISHED
+    return MATCH_STATE_CONFIG.SCHEDULED
+  }
+  const stateConfig = getStateConfig()
   const isLive = ['FIRST_HALF', 'SECOND_HALF', 'EXTRA_TIME_1', 'EXTRA_TIME_2', 'PENALTIES'].includes(state)
   const hasPenalties = penaltyScore?.home > 0 || penaltyScore?.away > 0
 

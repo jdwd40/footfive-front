@@ -248,14 +248,16 @@ export const useLiveStore = create((set, get) => ({
         const nextRoundName = normalizeRound(STATE_TO_NEXT_ROUND[currentState])
         
         // Filter for SCHEDULED fixtures in the next round only
-        // Only include fixtures that haven't started (SCHEDULED state and no score)
+        // STRICT check: only explicit SCHEDULED state counts as upcoming
+        // A match with ANY score (including 0-0) is NOT upcoming
         const upcomingFixtures = nextRoundName
           ? allFixtures.filter(m => {
               const matchRound = normalizeRound(m.round)
-              const hasNoScore = (!m.score?.home && !m.score?.away) || (m.score?.home === 0 && m.score?.away === 0)
-              const isScheduled = m.state === 'SCHEDULED' || (!m.state && hasNoScore)
-              // Only include fixtures from the next round that are scheduled (not started yet)
-              return matchRound === nextRoundName && isScheduled && !m.isFinished
+              const isExplicitlyScheduled = m.state === 'SCHEDULED'
+              const hasNullScore = m.score?.home == null && m.score?.away == null
+              const isNotFinished = !m.isFinished && m.state !== 'FINISHED'
+              
+              return matchRound === nextRoundName && isExplicitlyScheduled && hasNullScore && isNotFinished
             })
           : []
 

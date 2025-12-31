@@ -132,9 +132,19 @@ export default function RoundSection({
 
 function MatchCard({ match, isCurrentRound, onTeamClick }) {
   const { fixtureId, state, minute, score, penaltyScore, homeTeam, awayTeam } = match
-  const stateConfig = MATCH_STATE_LABELS[state] || MATCH_STATE_LABELS.SCHEDULED
+  
+  // Determine if match has scores (even 0-0 counts as having a score)
+  const hasScore = score?.home != null || score?.away != null
+  const isFinished = state === 'FINISHED' || match.isFinished || (hasScore && state !== 'SCHEDULED')
+  
+  // Get state config - don't fall back to SCHEDULED if match has scores
+  const getStateConfig = () => {
+    if (MATCH_STATE_LABELS[state]) return MATCH_STATE_LABELS[state]
+    if (isFinished || hasScore) return MATCH_STATE_LABELS.FINISHED
+    return MATCH_STATE_LABELS.SCHEDULED
+  }
+  const stateConfig = getStateConfig()
   const isLive = stateConfig.live
-  const isFinished = state === 'FINISHED' || match.isFinished
 
   const homeWon = isFinished && (
     (score?.home > score?.away) || 

@@ -510,9 +510,21 @@ function QuickStat({ value, label, icon, highlight }) {
 
 function MatchCard({ match, featured = false }) {
   const { fixtureId, state, minute, score, penaltyScore, homeTeam, awayTeam } = match
-  const stateConfig = MATCH_STATE_CONFIG[state] || MATCH_STATE_CONFIG.SCHEDULED
+  
+  // Determine if match is finished - check multiple indicators
+  const hasScore = score?.home != null || score?.away != null
+  const isFinished = state === 'FINISHED' || match.isFinished || (hasScore && state !== 'SCHEDULED')
+  
+  // Get state config - but DON'T fall back to SCHEDULED if match has scores or is finished
+  // This prevents showing "Upcoming" for played matches with missing state
+  const getStateConfig = () => {
+    if (MATCH_STATE_CONFIG[state]) return MATCH_STATE_CONFIG[state]
+    // If match has scores or is marked finished, show as FT not Upcoming
+    if (isFinished || hasScore) return MATCH_STATE_CONFIG.FINISHED
+    return MATCH_STATE_CONFIG.SCHEDULED
+  }
+  const stateConfig = getStateConfig()
   const isLive = stateConfig.live
-  const isFinished = state === 'FINISHED' || match.isFinished
 
   const homeWon = isFinished && (
     (score?.home > score?.away) || 
