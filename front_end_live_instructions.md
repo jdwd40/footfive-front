@@ -2,7 +2,7 @@
 
 ## Base URL
 ```
-Production: http://77.68.4.18:9001/api/live
+Production: https://jwd1.xyz/api/live
 Development: http://localhost:9001/api/live
 ```
 
