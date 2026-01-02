@@ -31,14 +31,15 @@ export default function LiveMatchDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Check store for existing match data
+  // Check store for existing match data (handle string/number ID mismatches)
   const storeMatch = useLiveStore(state => 
-    state.matches.find(m => m.fixtureId === parseInt(fixtureId))
+    state.matches.find(m => m.fixtureId == fixtureId || String(m.fixtureId) === String(fixtureId))
   )
 
   // SSE event handler for this specific match
   const onEvent = useCallback((event) => {
-    if (event.fixtureId !== parseInt(fixtureId)) return
+    // Handle string/number ID mismatches
+    if (String(event.fixtureId) !== String(fixtureId)) return
 
     // Add event to local events list
     setEvents(prev => {
@@ -62,9 +63,20 @@ export default function LiveMatchDetail() {
       setMatch(prev => prev ? { ...prev, state: 'HALFTIME' } : prev)
     } else if (event.type === 'second_half_start') {
       setMatch(prev => prev ? { ...prev, state: 'SECOND_HALF' } : prev)
-    } else if (event.type === 'fulltime' || event.type === 'match_end') {
+    } else if (event.type === 'extra_time_start') {
+      setMatch(prev => prev ? { ...prev, state: 'EXTRA_TIME_1' } : prev)
+      addToast('⚡ Extra Time!', 'info', 5000)
+    } else if (event.type === 'shootout_start') {
+      setMatch(prev => prev ? { ...prev, state: 'PENALTIES' } : prev)
+      addToast('🎯 Penalty Shootout!', 'info', 5000)
+    } else if (event.type === 'fulltime') {
+      // fulltime = end of 90 mins, NOT the end of match in knockout tournaments
+      // Match may continue to extra time if scores are tied
+      addToast('⏱️ Full Time - 90 minutes', 'info', 5000)
+    } else if (event.type === 'match_end' || event.type === 'shootout_end') {
+      // Only mark as finished when match truly ends
       setMatch(prev => prev ? { ...prev, state: 'FINISHED', isFinished: true } : prev)
-      addToast('🏆 Full Time!', 'info', 5000)
+      addToast('🏆 Match Complete!', 'info', 5000)
     }
   }, [fixtureId, addToast])
 

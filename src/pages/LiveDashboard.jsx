@@ -4,6 +4,7 @@ import useLiveEvents from '../hooks/useLiveEvents'
 import RoundSection from '../components/live/RoundSection'
 import TeamStatsPanel from '../components/live/TeamStatsPanel'
 import WinnerCelebration from '../components/live/WinnerCelebration'
+import GoalTicker from '../components/live/GoalTicker'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ErrorDisplay from '../components/common/ErrorDisplay'
 import { useToast } from '../components/common/Toast'
@@ -55,7 +56,7 @@ export default function LiveDashboard() {
   const [showTeamPanel, setShowTeamPanel] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
   const [celebrationShown, setCelebrationShown] = useState(false)
-  
+
   const {
     tournament,
     fixtures,
@@ -63,6 +64,7 @@ export default function LiveDashboard() {
     completedMatches,
     lastCompletedTournament,
     lastCompletedFixtures,
+    recentEvents,
     connected,
     connecting,
     error,
@@ -75,7 +77,7 @@ export default function LiveDashboard() {
   // Handle incoming SSE events
   const onEvent = useCallback((event) => {
     handleEvent(event)
-    
+
     // Show toast for goals
     if (event.type === 'goal') {
       const teamName = event.homeTeam?.id === event.teamId ? event.homeTeam?.name : event.awayTeam?.name
@@ -110,10 +112,10 @@ export default function LiveDashboard() {
   }, [handleEvent, addToast])
 
   // Connect to SSE stream
-  const { 
-    connected: sseConnected, 
+  const {
+    connected: sseConnected,
     connecting: sseConnecting,
-    reconnect 
+    reconnect
   } = useLiveEvents({
     tournamentId: tournament?.tournamentId,
     onEvent,
@@ -161,7 +163,7 @@ export default function LiveDashboard() {
 
   const stateConfig = TOURNAMENT_STATE_CONFIG[liveTournament?.state] || TOURNAMENT_STATE_CONFIG.IDLE
   const currentRound = normalizeRound(STATE_TO_ROUND[liveTournament?.state])
-  
+
   // Organize matches by round - use fixtures array if available
   const baseFixtures = fixtures.length > 0 ? fixtures : (liveTournament === lastCompletedTournament ? (lastCompletedFixtures || []) : [])
   const allMatches = baseFixtures.length > 0 ? baseFixtures : [...(completedMatches || []), ...(matches || [])]
@@ -180,10 +182,10 @@ export default function LiveDashboard() {
   const getRoundState = (round) => {
     const roundMatches = matchesByRound[round]
     const allFinished = roundMatches.length > 0 && roundMatches.every(m => m.isFinished || m.state === 'FINISHED')
-    const anyInProgress = roundMatches.some(m => 
+    const anyInProgress = roundMatches.some(m =>
       ['FIRST_HALF', 'SECOND_HALF', 'EXTRA_TIME_1', 'EXTRA_TIME_2', 'PENALTIES', 'HALFTIME'].includes(m.state)
     )
-    
+
     return {
       isCompleted: allFinished,
       isCurrent: currentRound === round || anyInProgress,
@@ -216,7 +218,7 @@ export default function LiveDashboard() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Winner Celebration */}
-      <WinnerCelebration 
+      <WinnerCelebration
         winner={tournament?.winner}
         runnerUp={tournament?.runnerUp}
         show={showCelebration}
@@ -241,8 +243,8 @@ export default function LiveDashboard() {
                 <p className="text-sm text-text-muted">{error}</p>
               </div>
             </div>
-            <button 
-              onClick={() => fetchSnapshot().catch(() => {})}
+            <button
+              onClick={() => fetchSnapshot().catch(() => { })}
               className="btn btn-secondary text-sm"
             >
               Retry
@@ -253,18 +255,28 @@ export default function LiveDashboard() {
 
       {/* Connection Status */}
       {!error && (
-        <ConnectionStatus 
-          connected={connected} 
+        <ConnectionStatus
+          connected={connected}
           connecting={connecting}
           onReconnect={reconnect}
         />
       )}
 
       {/* Tournament Header */}
-      <TournamentHeader 
+      <TournamentHeader
         tournament={tournament}
         stateConfig={stateConfig}
         currentRound={currentRound}
+      />
+
+      {/* Goal Ticker - Shows scores and announces goals during live rounds */}
+      <GoalTicker
+        goalEvents={recentEvents}
+        matches={currentRound ? matchesByRound[currentRound] || [] : []}
+        isLive={['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(tournament?.state)}
+        isBreak={['QF_BREAK', 'SF_BREAK', 'FINAL_BREAK', 'SETUP'].includes(tournament?.state)}
+        currentRound={currentRound || ''}
+        nextRound={stateConfig?.phase === 'break' ? stateConfig?.title?.replace(' Starting', '') : ''}
       />
 
       {/* Current Round Highlight (when live) */}
@@ -288,7 +300,7 @@ export default function LiveDashboard() {
         <h2 className="text-lg font-bold text-text-muted uppercase tracking-wider">
           Tournament Progress
         </h2>
-        
+
         <div className="space-y-4">
           {ROUNDS.map((round, idx) => {
             const { isCompleted, isCurrent, isPending } = getRoundState(round)
@@ -296,10 +308,10 @@ export default function LiveDashboard() {
             if (isCurrent && currentRound === round && matchesByRound[round]?.length > 0) {
               return null
             }
-            
+
             return (
-              <div 
-                key={round} 
+              <div
+                key={round}
                 className="animate-slide-up"
                 style={{ animationDelay: `${idx * 100}ms` }}
               >
@@ -387,7 +399,7 @@ function ConnectionStatus({ connected, connecting, onReconnect }) {
         <span className="w-2 h-2 rounded-full bg-live" />
         Disconnected
       </span>
-      <button 
+      <button
         onClick={() => onReconnect(true)}
         className="text-xs font-medium underline hover:no-underline"
       >
@@ -421,10 +433,10 @@ function TournamentHeader({ tournament, stateConfig, currentRound }) {
         {/* Icon */}
         <div className={`
           w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center text-5xl shadow-xl
-          ${isComplete 
-            ? 'bg-gradient-to-br from-gold/30 to-yellow-500/20 shadow-gold/20' 
-            : isLive 
-              ? 'bg-gradient-to-br from-live/30 to-live/10 shadow-live/20 animate-pulse' 
+          ${isComplete
+            ? 'bg-gradient-to-br from-gold/30 to-yellow-500/20 shadow-gold/20'
+            : isLive
+              ? 'bg-gradient-to-br from-live/30 to-live/10 shadow-live/20 animate-pulse'
               : 'bg-gradient-to-br from-primary/20 to-primary/10 shadow-primary/20'}
         `}>
           {stateConfig.icon}
@@ -444,22 +456,22 @@ function TournamentHeader({ tournament, stateConfig, currentRound }) {
             )}
           </div>
           <p className="text-text-muted">{stateConfig.subtitle}</p>
-          
+
           {/* Round Progress Indicator */}
           {tournament && !['IDLE', 'SETUP', 'RESULTS', 'COMPLETE'].includes(tournament.state) && (
             <div className="mt-4 flex items-center gap-2">
               {ROUNDS.map((round, idx) => {
                 const isPast = ROUNDS.indexOf(currentRound) > idx
                 const isCurrent = currentRound === round
-                
+
                 return (
                   <div key={round} className="flex items-center gap-2">
                     <div className={`
                       w-3 h-3 rounded-full transition-all duration-300
-                      ${isCurrent 
-                        ? 'bg-live w-4 h-4 animate-pulse' 
-                        : isPast 
-                          ? 'bg-primary' 
+                      ${isCurrent
+                        ? 'bg-live w-4 h-4 animate-pulse'
+                        : isPast
+                          ? 'bg-primary'
                           : 'bg-border'}
                     `} />
                     {idx < ROUNDS.length - 1 && (

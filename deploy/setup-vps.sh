@@ -132,3 +132,4 @@ echo "4. Push to your main/master branch to trigger deployment!"
 echo ""
 echo "🌐 Your site will be available at: https://jwd1.xyz"
 
+

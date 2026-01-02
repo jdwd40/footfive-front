@@ -42,9 +42,21 @@ export default function RoundSection({
       const awayScore = Number(m.score?.away ?? 0)
       const homePens = Number(m.penaltyScore?.home ?? 0)
       const awayPens = Number(m.penaltyScore?.away ?? 0)
-      const homeWon = (homeScore > awayScore) || (homeScore === awayScore && homePens > awayPens)
-      return homeWon ? m.homeTeam : m.awayTeam
+      
+      // Check if there's an outright winner (either by regular score or penalties)
+      if (homeScore > awayScore) return m.homeTeam
+      if (awayScore > homeScore) return m.awayTeam
+      
+      // Scores are tied - check penalties (only if penalties were actually taken)
+      if (homePens > 0 || awayPens > 0) {
+        if (homePens > awayPens) return m.homeTeam
+        if (awayPens > homePens) return m.awayTeam
+      }
+      
+      // No clear winner (draw - shouldn't happen in knockout)
+      return null
     })
+    .filter(Boolean) // Remove null entries (draws)
 
   return (
     <div className={`
@@ -135,12 +147,15 @@ function MatchCard({ match, isCurrentRound, onTeamClick }) {
   
   // Determine if match has scores (even 0-0 counts as having a score)
   const hasScore = score?.home != null || score?.away != null
-  const isFinished = state === 'FINISHED' || match.isFinished || (hasScore && state !== 'SCHEDULED')
+  // Only trust explicit FINISHED state - backend handles extra time and penalties
+  const isFinished = state === 'FINISHED' || match.isFinished === true
   
-  // Get state config - don't fall back to SCHEDULED if match has scores
+  // Get state config - use actual state from backend
   const getStateConfig = () => {
     if (MATCH_STATE_LABELS[state]) return MATCH_STATE_LABELS[state]
-    if (isFinished || hasScore) return MATCH_STATE_LABELS.FINISHED
+    if (isFinished) return MATCH_STATE_LABELS.FINISHED
+    // If match has scores but unknown state, show as in progress
+    if (hasScore) return { label: 'Live', color: 'text-live bg-live/20', live: true }
     return MATCH_STATE_LABELS.SCHEDULED
   }
   const stateConfig = getStateConfig()

@@ -147,7 +147,7 @@ export default function FixtureList() {
   // Add upcoming fixtures to next round if available
   if (nextRound && upcomingFixtures?.length > 0) {
     matchesByRound[nextRound] = [...(matchesByRound[nextRound] || []), ...upcomingFixtures.filter(f => 
-      !matchesByRound[nextRound]?.some(m => m.fixtureId === f.fixtureId)
+      !matchesByRound[nextRound]?.some(m => m.fixtureId == f.fixtureId || String(m.fixtureId) === String(f.fixtureId))
     )]
   }
 
@@ -511,16 +511,18 @@ function QuickStat({ value, label, icon, highlight }) {
 function MatchCard({ match, featured = false }) {
   const { fixtureId, state, minute, score, penaltyScore, homeTeam, awayTeam } = match
   
-  // Determine if match is finished - check multiple indicators
+  // Determine if match is finished - only trust explicit FINISHED state from backend
+  // The backend handles extra time and penalties, so we must wait for actual FINISHED state
   const hasScore = score?.home != null || score?.away != null
-  const isFinished = state === 'FINISHED' || match.isFinished || (hasScore && state !== 'SCHEDULED')
+  const isFinished = state === 'FINISHED' || match.isFinished === true
   
-  // Get state config - but DON'T fall back to SCHEDULED if match has scores or is finished
-  // This prevents showing "Upcoming" for played matches with missing state
+  // Get state config - use actual state from backend, don't assume finished just because there's a score
   const getStateConfig = () => {
     if (MATCH_STATE_CONFIG[state]) return MATCH_STATE_CONFIG[state]
-    // If match has scores or is marked finished, show as FT not Upcoming
-    if (isFinished || hasScore) return MATCH_STATE_CONFIG.FINISHED
+    // Only mark as finished if explicitly finished
+    if (isFinished) return MATCH_STATE_CONFIG.FINISHED
+    // If match has scores but unknown state, show as in progress (not finished!)
+    if (hasScore) return { label: 'Live', color: 'bg-live/20 text-live', dot: 'bg-live', live: true }
     return MATCH_STATE_CONFIG.SCHEDULED
   }
   const stateConfig = getStateConfig()
@@ -697,7 +699,17 @@ function getMatchWinner(match) {
   const awayScore = Number(match.score?.away ?? 0)
   const homePens = Number(match.penaltyScore?.home ?? 0)
   const awayPens = Number(match.penaltyScore?.away ?? 0)
-  const homeWon = (homeScore > awayScore) || (homeScore === awayScore && homePens > awayPens)
   
-  return homeWon ? match.homeTeam?.name : match.awayTeam?.name
+  // Check if there's an outright winner (either by regular score or penalties)
+  if (homeScore > awayScore) return match.homeTeam?.name
+  if (awayScore > homeScore) return match.awayTeam?.name
+  
+  // Scores are tied - check penalties (only if penalties were actually taken)
+  if (homePens > 0 || awayPens > 0) {
+    if (homePens > awayPens) return match.homeTeam?.name
+    if (awayPens > homePens) return match.awayTeam?.name
+  }
+  
+  // No clear winner (shouldn't happen in knockout, but return null for safety)
+  return null
 }
