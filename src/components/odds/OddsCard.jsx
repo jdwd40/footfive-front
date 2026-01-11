@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { formatOdds, formatDate, formatTime } from '../../utils/formatters'
+import { formatOdds } from '../../utils/formatters'
 import ProbabilityBar from './ProbabilityBar'
 
 export default function OddsCard({ fixture, odds }) {
@@ -7,7 +7,6 @@ export default function OddsCard({ fixture, odds }) {
     fixture_id,
     home_team,
     away_team,
-    scheduled_time,
     tournament_name,
     round_number
   } = fixture
@@ -38,11 +37,7 @@ export default function OddsCard({ fixture, odds }) {
             )}
             {round_number && <span>R{round_number}</span>}
           </div>
-          <div>
-            <span className="font-medium">{formatDate(scheduled_time)}</span>
-            <span className="mx-1">•</span>
-            <span>{formatTime(scheduled_time)}</span>
-          </div>
+          <span className="px-2 py-0.5 bg-card-hover rounded-md">Upcoming</span>
         </div>
 
         {/* Teams & Odds Grid */}
@@ -89,9 +84,9 @@ export default function OddsCard({ fixture, odds }) {
         </div>
 
         {/* Probability Bar */}
-        <ProbabilityBar 
-          home={normalizedHome} 
-          draw={normalizedDraw} 
+        <ProbabilityBar
+          home={normalizedHome}
+          draw={normalizedDraw}
           away={normalizedAway}
           homeLabel={home_team}
           awayLabel={away_team}

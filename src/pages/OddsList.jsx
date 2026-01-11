@@ -9,7 +9,7 @@ export default function OddsList() {
   const [fixtures, setFixtures] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [sortBy, setSortBy] = useState('date')
+  const [sortBy, setSortBy] = useState('home_odds')
 
   useEffect(() => {
     fetchUpcomingFixtures()
@@ -21,7 +21,7 @@ export default function OddsList() {
     try {
       // Get scheduled fixtures
       const { data } = await fixturesApi.getAll({ status: 'scheduled' })
-      
+
       // Fetch odds for each fixture
       const fixturesWithOdds = await Promise.all(
         (data || []).map(async (fixture) => {
@@ -33,7 +33,7 @@ export default function OddsList() {
           }
         })
       )
-      
+
       setFixtures(fixturesWithOdds)
     } catch (err) {
       setError(err.message)
@@ -45,8 +45,6 @@ export default function OddsList() {
   // Sort fixtures
   const sortedFixtures = [...fixtures].sort((a, b) => {
     switch (sortBy) {
-      case 'date':
-        return new Date(a.scheduled_time) - new Date(b.scheduled_time)
       case 'home_odds':
         return (a.odds?.home_odds || a.odds?.home_win_odds || 999) - (b.odds?.home_odds || b.odds?.home_win_odds || 999)
       case 'away_odds':
@@ -89,18 +87,16 @@ export default function OddsList() {
         <span className="text-sm text-text-muted">Sort by:</span>
         <div className="flex gap-2">
           {[
-            { id: 'date', label: 'Date' },
             { id: 'home_odds', label: 'Home Favorite' },
             { id: 'away_odds', label: 'Away Favorite' },
           ].map(option => (
             <button
               key={option.id}
               onClick={() => setSortBy(option.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                sortBy === option.id
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${sortBy === option.id
                   ? 'bg-primary text-bg'
                   : 'bg-card text-text-muted hover:text-text hover:bg-card-hover'
-              }`}
+                }`}
             >
               {option.label}
             </button>
@@ -121,7 +117,7 @@ export default function OddsList() {
           {fixturesWithOdds.length > 0 && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
               {fixturesWithOdds.map((fixture, index) => (
-                <div 
+                <div
                   key={fixture.fixture_id}
                   className="animate-fade-in"
                   style={{ animationDelay: `${index * 50}ms` }}
@@ -164,21 +160,21 @@ export default function OddsList() {
       {!loading && !error && fixturesWithOdds.length > 0 && (
         <div className="mt-8 p-4 bg-card rounded-xl border border-border">
           <div className="flex flex-wrap justify-center gap-6 text-center">
-            <StatItem 
-              label="Upcoming Matches" 
-              value={fixtures.length} 
+            <StatItem
+              label="Upcoming Matches"
+              value={fixtures.length}
             />
-            <StatItem 
-              label="With Odds" 
-              value={fixturesWithOdds.length} 
+            <StatItem
+              label="With Odds"
+              value={fixturesWithOdds.length}
             />
-            <StatItem 
-              label="Avg Home Odds" 
+            <StatItem
+              label="Avg Home Odds"
               value={calculateAvgOdds(fixturesWithOdds, 'home')}
               isOdds
             />
-            <StatItem 
-              label="Avg Away Odds" 
+            <StatItem
+              label="Avg Away Odds"
               value={calculateAvgOdds(fixturesWithOdds, 'away')}
               isOdds
             />
@@ -215,11 +211,11 @@ function StatItem({ label, value, isOdds }) {
 function calculateAvgOdds(fixtures, type) {
   const oddsKey = type === 'home' ? 'home_odds' : 'away_odds'
   const altKey = type === 'home' ? 'home_win_odds' : 'away_win_odds'
-  
+
   const validOdds = fixtures
     .map(f => f.odds?.[oddsKey] || f.odds?.[altKey])
     .filter(o => o && o > 0)
-  
+
   if (validOdds.length === 0) return 0
   return validOdds.reduce((sum, o) => sum + o, 0) / validOdds.length
 }

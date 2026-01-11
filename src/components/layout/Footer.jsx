@@ -45,20 +45,18 @@ export default function Footer() {
 
           {/* Tournament Info */}
           <div>
-            <h4 className="font-semibold text-text mb-4">Tournament Schedule</h4>
+            <h4 className="font-semibold text-text mb-4">About</h4>
             <div className="text-sm text-text-muted space-y-1">
-              <p><span className="font-mono text-primary">:55</span> — Tournament Setup</p>
-              <p><span className="font-mono text-primary">:00</span> — Round of 16</p>
-              <p><span className="font-mono text-primary">:15</span> — Quarter-Finals</p>
-              <p><span className="font-mono text-primary">:30</span> — Semi-Finals</p>
-              <p><span className="font-mono text-primary">:45</span> — The Final</p>
+              <p>Tournaments run continuously</p>
+              <p>Next round starts ~5 mins after current round ends</p>
+              <p>New tournament begins after the final</p>
             </div>
           </div>
         </div>
 
         <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-muted">
-            Tournaments run every hour, 24/7
+            Tournaments run continuously, 24/7
           </p>
           <p className="text-xs text-text-muted">
             Built with React + Vite

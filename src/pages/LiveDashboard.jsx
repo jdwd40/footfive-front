@@ -3,8 +3,8 @@ import useLiveStore from '../stores/useLiveStore'
 import useLiveEvents from '../hooks/useLiveEvents'
 import RoundSection from '../components/live/RoundSection'
 import TeamStatsPanel from '../components/live/TeamStatsPanel'
-import WinnerCelebration from '../components/live/WinnerCelebration'
 import GoalTicker from '../components/live/GoalTicker'
+import LiveEventsFeed from '../components/live/LiveEventsFeed'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ErrorDisplay from '../components/common/ErrorDisplay'
 import { useToast } from '../components/common/Toast'
@@ -20,7 +20,8 @@ const ROUND_NORMALIZATION = [
 
 function normalizeRound(name) {
   if (!name) return null
-  const key = name.toString().toLowerCase().replace(/[\s-]/g, '')
+  // Remove spaces, hyphens, AND underscores to handle backend names like ROUND_OF_16, QUARTER_FINALS
+  const key = name.toString().toLowerCase().replace(/[\s\-_]/g, '')
   const found = ROUND_NORMALIZATION.find(entry => entry.keys.includes(key))
   return found ? found.value : null
 }
@@ -54,8 +55,6 @@ export default function LiveDashboard() {
   const { addToast } = useToast()
   const [selectedTeam, setSelectedTeam] = useState(null)
   const [showTeamPanel, setShowTeamPanel] = useState(false)
-  const [showCelebration, setShowCelebration] = useState(false)
-  const [celebrationShown, setCelebrationShown] = useState(false)
 
   const {
     tournament,
@@ -106,8 +105,6 @@ export default function LiveDashboard() {
         'goal',
         10000
       )
-      // Show celebration
-      setShowCelebration(true)
     }
   }, [handleEvent, addToast])
 
@@ -144,17 +141,7 @@ export default function LiveDashboard() {
     useLiveStore.setState({ connected: sseConnected, connecting: sseConnecting })
   }, [sseConnected, sseConnecting])
 
-  // Show celebration when there's a winner (and we haven't shown it yet)
-  useEffect(() => {
-    if (tournament?.winner && tournament?.state === 'RESULTS' && !celebrationShown) {
-      setShowCelebration(true)
-      setCelebrationShown(true)
-    }
-    // Reset celebration flag when tournament changes
-    if (tournament?.state === 'IDLE' || tournament?.state === 'SETUP') {
-      setCelebrationShown(false)
-    }
-  }, [tournament?.winner, tournament?.state, celebrationShown])
+  // Show celebration when there's a winner (handled below after derivedWinner is computed)
 
   // Get state config
   const liveTournament = tournament?.state && tournament.state !== 'IDLE'
@@ -183,7 +170,7 @@ export default function LiveDashboard() {
     const roundMatches = matchesByRound[round]
     const allFinished = roundMatches.length > 0 && roundMatches.every(m => m.isFinished || m.state === 'FINISHED')
     const anyInProgress = roundMatches.some(m =>
-      ['FIRST_HALF', 'SECOND_HALF', 'EXTRA_TIME_1', 'EXTRA_TIME_2', 'PENALTIES', 'HALFTIME'].includes(m.state)
+      ['FIRST_HALF', 'SECOND_HALF', 'EXTRA_TIME_1', 'EXTRA_TIME_2', 'PENALTIES', 'HALFTIME', 'ET_HALFTIME'].includes(m.state)
     )
 
     return {
@@ -192,6 +179,49 @@ export default function LiveDashboard() {
       isPending: !allFinished && !anyInProgress && roundMatches.length === 0
     }
   }
+
+  // WORKAROUND: Derive tournament winner from Final match if backend hasn't set it
+  // This handles the case where the Final is finished but tournament.state hasn't transitioned yet
+  const derivedWinner = (() => {
+    // If backend already set the winner, use that
+    if (tournament?.winner) return tournament.winner
+
+    // Find the Final match
+    const finalMatch = allMatches.find(m =>
+      normalizeRound(m.round) === 'Final' || m.bracketSlot === 'FINAL'
+    )
+
+    // If Final is finished, derive winner from it
+    if (finalMatch && (finalMatch.state === 'FINISHED' || finalMatch.isFinished)) {
+      const winnerId = finalMatch.winnerId || finalMatch.winner?.id
+      if (winnerId) {
+        if (finalMatch.homeTeam?.id == winnerId) return finalMatch.homeTeam
+        if (finalMatch.awayTeam?.id == winnerId) return finalMatch.awayTeam
+      }
+      // Fall back to score comparison
+      if (finalMatch.score?.home > finalMatch.score?.away) return finalMatch.homeTeam
+      if (finalMatch.score?.away > finalMatch.score?.home) return finalMatch.awayTeam
+    }
+    return null
+  })()
+
+  const derivedRunnerUp = (() => {
+    if (tournament?.runnerUp) return tournament.runnerUp
+    if (!derivedWinner) return null
+
+    const finalMatch = allMatches.find(m =>
+      normalizeRound(m.round) === 'Final' || m.bracketSlot === 'FINAL'
+    )
+    if (finalMatch) {
+      // Runner-up is whichever team isn't the winner
+      if (finalMatch.homeTeam?.id == derivedWinner?.id) return finalMatch.awayTeam
+      if (finalMatch.awayTeam?.id == derivedWinner?.id) return finalMatch.homeTeam
+    }
+    return null
+  })()
+
+  // Check if tournament is effectively complete (Final finished, even if state hasn't transitioned)
+  const isEffectivelyComplete = derivedWinner != null
 
   // Handle team click
   const handleTeamClick = (team) => {
@@ -217,13 +247,6 @@ export default function LiveDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {/* Winner Celebration */}
-      <WinnerCelebration
-        winner={tournament?.winner}
-        runnerUp={tournament?.runnerUp}
-        show={showCelebration}
-        onClose={() => setShowCelebration(false)}
-      />
 
       {/* Team Stats Panel */}
       <TeamStatsPanel
@@ -279,6 +302,12 @@ export default function LiveDashboard() {
         nextRound={stateConfig?.phase === 'break' ? stateConfig?.title?.replace(' Starting', '') : ''}
       />
 
+      {/* Live Events Feed - Shows all events in real-time */}
+      <LiveEventsFeed
+        events={recentEvents}
+        isLive={['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(tournament?.state)}
+      />
+
       {/* Current Round Highlight (when live) */}
       {currentRound && matchesByRound[currentRound]?.length > 0 && (
         <div className="mb-8 animate-slide-up">
@@ -330,7 +359,7 @@ export default function LiveDashboard() {
       </div>
 
       {/* Tournament Winner Section (persisted after celebration closes) */}
-      {tournament?.winner && (tournament?.state === 'RESULTS' || tournament?.state === 'COMPLETE') && (
+      {(tournament?.winner || derivedWinner) && (tournament?.state === 'RESULTS' || tournament?.state === 'COMPLETE' || isEffectivelyComplete) && (
         <div className="mt-8 animate-slide-up">
           <div className="bg-gradient-to-br from-gold/10 via-card to-gold/10 rounded-3xl border border-gold/30 p-8 text-center glow-gold">
             <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-yellow-400 via-gold to-yellow-500 flex items-center justify-center text-5xl shadow-xl shadow-gold/30">
@@ -338,15 +367,15 @@ export default function LiveDashboard() {
             </div>
             <p className="text-gold text-sm font-semibold uppercase tracking-wider mb-2">Tournament Champion</p>
             <h3 className="text-3xl font-bold text-text mb-2">
-              {tournament.winner?.name || tournament.winner}
+              {(tournament?.winner || derivedWinner)?.name || tournament?.winner || derivedWinner}
             </h3>
-            {tournament.runnerUp && (
+            {(tournament?.runnerUp || derivedRunnerUp) && (
               <p className="text-text-muted">
-                Runner-up: <span className="text-text">{tournament.runnerUp?.name || tournament.runnerUp}</span>
+                Runner-up: <span className="text-text">{(tournament?.runnerUp || derivedRunnerUp)?.name || tournament?.runnerUp || derivedRunnerUp}</span>
               </p>
             )}
             <button
-              onClick={() => handleTeamClick(tournament.winner)}
+              onClick={() => handleTeamClick(tournament?.winner || derivedWinner)}
               className="mt-4 btn btn-ghost text-gold hover:bg-gold/10"
             >
               View Champion Stats →

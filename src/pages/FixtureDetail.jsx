@@ -5,7 +5,7 @@ import MatchReport from '../components/fixtures/MatchReport'
 import EventTimeline from '../components/fixtures/EventTimeline'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ErrorDisplay from '../components/common/ErrorDisplay'
-import { formatDate, formatTime, getStatusBadge, formatScore, formatOdds } from '../utils/formatters'
+import { getStatusBadge, formatScore, formatOdds } from '../utils/formatters'
 
 export default function FixtureDetail() {
   const { id } = useParams()
@@ -68,8 +68,8 @@ export default function FixtureDetail() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back Link */}
-      <Link 
-        to="/fixtures" 
+      <Link
+        to="/fixtures"
         className="inline-flex items-center gap-2 text-text-muted hover:text-primary mb-6 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -111,8 +111,7 @@ export default function FixtureDetail() {
           <div className="text-center px-4">
             {fixture.status === 'scheduled' ? (
               <div className="text-text-muted">
-                <p className="text-2xl font-bold text-text">{formatTime(fixture.scheduled_time)}</p>
-                <p className="text-sm">{formatDate(fixture.scheduled_time)}</p>
+                <p className="text-2xl font-bold text-text">Upcoming</p>
               </div>
             ) : (
               <div className={`text-4xl font-bold ${isLive ? 'text-primary' : 'text-text'}`}>
@@ -143,7 +142,7 @@ export default function FixtureDetail() {
         {/* Live Match Link */}
         {isLive && (
           <div className="mt-4 pt-4 border-t border-border text-center">
-            <Link 
+            <Link
               to={`/fixtures/${id}/live`}
               className="btn btn-primary inline-flex items-center gap-2"
             >
@@ -162,11 +161,10 @@ export default function FixtureDetail() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg font-medium capitalize transition-all ${
-                  activeTab === tab
-                    ? 'bg-primary text-bg'
-                    : 'bg-card text-text-muted hover:text-text hover:bg-card-hover'
-                }`}
+                className={`px-4 py-2 rounded-lg font-medium capitalize transition-all ${activeTab === tab
+                  ? 'bg-primary text-bg'
+                  : 'bg-card text-text-muted hover:text-text hover:bg-card-hover'
+                  }`}
               >
                 {tab}
               </button>
@@ -192,8 +190,6 @@ export default function FixtureDetail() {
               <div className="card">
                 <h3 className="text-lg font-bold text-text mb-4">Match Info</h3>
                 <div className="space-y-3 text-sm">
-                  <InfoRow label="Date" value={formatDate(fixture.scheduled_time)} />
-                  <InfoRow label="Time" value={formatTime(fixture.scheduled_time)} />
                   {fixture.tournament_name && <InfoRow label="Tournament" value={fixture.tournament_name} />}
                   {fixture.round_number && <InfoRow label="Round" value={fixture.round_number} />}
                   <InfoRow label="Status" value={statusBadge.text} />
@@ -205,10 +201,10 @@ export default function FixtureDetail() {
           {activeTab === 'events' && (
             <div className="card">
               <h3 className="text-lg font-bold text-text mb-4">Match Events</h3>
-              <EventTimeline 
-                events={events} 
-                homeTeam={fixture.home_team} 
-                awayTeam={fixture.away_team} 
+              <EventTimeline
+                events={events}
+                homeTeam={fixture.home_team}
+                awayTeam={fixture.away_team}
               />
             </div>
           )}

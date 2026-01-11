@@ -45,7 +45,7 @@ const TOURNAMENT_STATE_TO_ROUND = {
 
 export default function FixtureList() {
   const { addToast } = useToast()
-  
+
   const {
     tournament,
     fixtures,
@@ -64,7 +64,7 @@ export default function FixtureList() {
   // Handle SSE events
   const onEvent = useCallback((event) => {
     handleEvent(event)
-    
+
     if (event.type === 'goal') {
       const teamName = event.homeTeam?.id === event.teamId ? event.homeTeam?.name : event.awayTeam?.name
       addToast(`⚽ GOAL! ${event.displayName || ''} - ${teamName || ''}`, 'goal', 4000)
@@ -82,10 +82,10 @@ export default function FixtureList() {
 
   // Fetch and poll for updates
   useEffect(() => {
-    fetchSnapshot().catch(() => {})
-    
+    fetchSnapshot().catch(() => { })
+
     const pollInterval = setInterval(() => {
-      fetchSnapshot().catch(() => {})
+      fetchSnapshot().catch(() => { })
     }, 8000) // Poll every 8 seconds
 
     return () => clearInterval(pollInterval)
@@ -93,18 +93,18 @@ export default function FixtureList() {
 
   // Determine if we're in a waiting state (SETUP/IDLE)
   const isWaitingState = !tournament?.state || tournament?.state === 'IDLE' || tournament?.state === 'SETUP'
-  
+
   // For display purposes, prefer showing last completed tournament during waiting states
-  const displayTournament = isWaitingState && lastCompletedTournament 
-    ? lastCompletedTournament 
+  const displayTournament = isWaitingState && lastCompletedTournament
+    ? lastCompletedTournament
     : tournament
 
   // Use fixtures from current tournament, or fall back to last completed
-  const baseFixtures = fixtures.length > 0 
-    ? fixtures 
+  const baseFixtures = fixtures.length > 0
+    ? fixtures
     : (lastCompletedFixtures?.length > 0 ? lastCompletedFixtures : [])
-  const allMatches = baseFixtures.length > 0 
-    ? baseFixtures 
+  const allMatches = baseFixtures.length > 0
+    ? baseFixtures
     : [...(completedMatches || []), ...(matches || [])]
 
   // Debug logging
@@ -121,12 +121,12 @@ export default function FixtureList() {
       isWaitingState,
     })
   }, [tournament, fixtures, lastCompletedFixtures, matches, completedMatches, allMatches.length, upcomingFixtures, isWaitingState])
-  
+
   // Get current round from actual tournament state (not display tournament)
   const currentRound = normalizeRound(TOURNAMENT_STATE_TO_ROUND[tournament?.state])
   const isRoundActive = ['ROUND_OF_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL'].includes(tournament?.state)
   const isBreak = tournament?.state?.includes('BREAK') || tournament?.state === 'SETUP'
-  
+
   // Determine next round - now works for both active rounds AND breaks
   // This allows showing upcoming fixtures even while current round is being played
   const nextRound = normalizeRound(getNextRound(tournament?.state))
@@ -146,7 +146,7 @@ export default function FixtureList() {
 
   // Add upcoming fixtures to next round if available
   if (nextRound && upcomingFixtures?.length > 0) {
-    matchesByRound[nextRound] = [...(matchesByRound[nextRound] || []), ...upcomingFixtures.filter(f => 
+    matchesByRound[nextRound] = [...(matchesByRound[nextRound] || []), ...upcomingFixtures.filter(f =>
       !matchesByRound[nextRound]?.some(m => m.fixtureId == f.fixtureId || String(m.fixtureId) === String(f.fixtureId))
     )]
   }
@@ -155,6 +155,46 @@ export default function FixtureList() {
   const liveMatches = allMatches.filter(m => MATCH_STATE_CONFIG[m.state]?.live)
   const completedCount = allMatches.filter(m => m.state === 'FINISHED' || m.isFinished).length
   const totalGoals = allMatches.reduce((sum, m) => sum + (m.score?.home || 0) + (m.score?.away || 0), 0)
+
+  // WORKAROUND: Derive tournament winner from Final match if backend hasn't set it
+  // This handles the case where the Final is finished but tournament.state hasn't transitioned yet
+  const derivedWinner = (() => {
+    // If backend already set the winner, use that
+    if (tournament?.winner) return tournament.winner
+
+    // Find the Final match
+    const finalMatch = allMatches.find(m =>
+      normalizeRound(m.round) === 'Final' || m.bracketSlot === 'FINAL'
+    )
+
+    // If Final is finished, derive winner from it
+    if (finalMatch && (finalMatch.state === 'FINISHED' || finalMatch.isFinished)) {
+      const winnerId = finalMatch.winnerId || finalMatch.winner?.id
+      if (winnerId) {
+        if (finalMatch.homeTeam?.id == winnerId) return finalMatch.homeTeam
+        if (finalMatch.awayTeam?.id == winnerId) return finalMatch.awayTeam
+      }
+      // Fall back to score comparison
+      if (finalMatch.score?.home > finalMatch.score?.away) return finalMatch.homeTeam
+      if (finalMatch.score?.away > finalMatch.score?.home) return finalMatch.awayTeam
+    }
+    return null
+  })()
+
+  const derivedRunnerUp = (() => {
+    if (tournament?.runnerUp) return tournament.runnerUp
+    if (!derivedWinner) return null
+
+    const finalMatch = allMatches.find(m =>
+      normalizeRound(m.round) === 'Final' || m.bracketSlot === 'FINAL'
+    )
+    if (finalMatch) {
+      // Runner-up is whichever team isn't the winner
+      if (finalMatch.homeTeam?.id == derivedWinner?.id) return finalMatch.awayTeam
+      if (finalMatch.awayTeam?.id == derivedWinner?.id) return finalMatch.homeTeam
+    }
+    return null
+  })()
 
   // Find current round index
   const currentRoundIndex = currentRound ? ROUNDS_ORDER.indexOf(currentRound) : -1
@@ -189,7 +229,7 @@ export default function FixtureList() {
               )}
             </div>
             <p className="text-text-muted">
-              {tournament?.tournamentId 
+              {tournament?.tournamentId
                 ? `Tournament #${tournament.tournamentId}`
                 : 'Waiting for tournament...'}
               {tournament?.state && ` • ${formatTournamentState(tournament.state)}`}
@@ -217,10 +257,10 @@ export default function FixtureList() {
               <div key={round} className="flex-1 flex items-center gap-2">
                 <div className={`
                   flex-1 h-2 rounded-full transition-all
-                  ${isComplete ? 'bg-primary' : 
-                    isCurrent ? 'bg-live animate-pulse' : 
-                    isNext ? 'bg-amber-500/50' : 
-                    'bg-border'}
+                  ${isComplete ? 'bg-primary' :
+                    isCurrent ? 'bg-live animate-pulse' :
+                      isNext ? 'bg-amber-500/50' :
+                        'bg-border'}
                 `} />
                 {idx < ROUNDS_ORDER.length - 1 && (
                   <div className={`w-2 h-2 rounded-full ${isComplete ? 'bg-primary' : 'bg-border'}`} />
@@ -264,22 +304,21 @@ export default function FixtureList() {
             {(() => {
               const roundToShow = isRoundActive ? currentRound : nextRound
               const roundMatches = matchesByRound[roundToShow] || []
-              
+
               // During breaks, if no matches for next round, show upcoming fixtures if available
               if (roundMatches.length === 0 && !isRoundActive && upcomingFixtures?.length > 0) {
                 return (
-                  <div className={`grid gap-3 ${
-                    upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
+                  <div className={`grid gap-3 ${upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
                     upcomingFixtures.length === 2 ? 'sm:grid-cols-2' :
-                    'sm:grid-cols-2 lg:grid-cols-4'
-                  }`}>
+                      'sm:grid-cols-2 lg:grid-cols-4'
+                    }`}>
                     {upcomingFixtures.map((match, idx) => (
                       <UpcomingMatchCard key={match.fixtureId || idx} match={match} />
                     ))}
                   </div>
                 )
               }
-              
+
               if (roundMatches.length === 0) {
                 return (
                   <div className="text-center py-8 text-text-muted">
@@ -290,11 +329,10 @@ export default function FixtureList() {
               }
 
               return (
-                <div className={`grid gap-3 ${
-                  roundMatches.length === 1 ? 'max-w-lg mx-auto' :
+                <div className={`grid gap-3 ${roundMatches.length === 1 ? 'max-w-lg mx-auto' :
                   roundMatches.length === 2 ? 'sm:grid-cols-2' :
-                  'sm:grid-cols-2 lg:grid-cols-4'
-                }`}>
+                    'sm:grid-cols-2 lg:grid-cols-4'
+                  }`}>
                   {roundMatches.map((match, idx) => (
                     <MatchCard key={match.fixtureId || idx} match={match} featured />
                   ))}
@@ -319,11 +357,10 @@ export default function FixtureList() {
           </div>
 
           <div className="rounded-2xl border border-amber-500/20 bg-card/50 p-4">
-            <div className={`grid gap-3 ${
-              upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
+            <div className={`grid gap-3 ${upcomingFixtures.length === 1 ? 'max-w-lg mx-auto' :
               upcomingFixtures.length === 2 ? 'sm:grid-cols-2' :
-              'sm:grid-cols-2 lg:grid-cols-4'
-            }`}>
+                'sm:grid-cols-2 lg:grid-cols-4'
+              }`}>
               {upcomingFixtures.map((match, idx) => (
                 <UpcomingMatchCard key={match.fixtureId || idx} match={match} />
               ))}
@@ -358,17 +395,17 @@ export default function FixtureList() {
         </div>
       )}
 
-      {/* Tournament Winner */}
-      {tournament?.winner && (
+      {/* Tournament Winner - use derived winner if backend hasn't set it */}
+      {(tournament?.winner || derivedWinner) && (
         <div className="mb-8 bg-gradient-to-br from-gold/10 via-card to-gold/10 rounded-2xl border border-gold/30 p-6 text-center">
           <span className="text-5xl mb-3 block">🏆</span>
           <p className="text-gold text-sm font-semibold uppercase tracking-wider mb-1">Champion</p>
           <h3 className="text-2xl font-bold text-text mb-1">
-            {tournament.winner?.name || tournament.winner}
+            {(tournament?.winner || derivedWinner)?.name || tournament?.winner || derivedWinner}
           </h3>
-          {tournament.runnerUp && (
+          {(tournament?.runnerUp || derivedRunnerUp) && (
             <p className="text-text-muted text-sm">
-              Runner-up: {tournament.runnerUp?.name || tournament.runnerUp}
+              Runner-up: {(tournament?.runnerUp || derivedRunnerUp)?.name || tournament?.runnerUp || derivedRunnerUp}
             </p>
           )}
         </div>
@@ -376,97 +413,96 @@ export default function FixtureList() {
 
       {/* Previous Rounds Results - only show if we have matches */}
       {allMatches.length > 0 && (
-      <div className="space-y-6">
-        <h2 className="text-lg font-bold text-text-muted uppercase tracking-wider">
-          All Rounds
-        </h2>
+        <div className="space-y-6">
+          <h2 className="text-lg font-bold text-text-muted uppercase tracking-wider">
+            All Rounds
+          </h2>
 
-        {[...ROUNDS_ORDER].reverse().map((round, roundIdx) => {
-          const roundMatches = matchesByRound[round] || []
-          const isCurrentlyFeatured = (isRoundActive && currentRound === round) || (!isRoundActive && nextRound === round)
-          
-          // Skip if already shown in featured section and has matches
-          if (isCurrentlyFeatured && roundMatches.length > 0) return null
+          {[...ROUNDS_ORDER].reverse().map((round, roundIdx) => {
+            const roundMatches = matchesByRound[round] || []
+            const isCurrentlyFeatured = (isRoundActive && currentRound === round) || (!isRoundActive && nextRound === round)
 
-          const isComplete = roundMatches.length > 0 && roundMatches.every(m => m.state === 'FINISHED' || m.isFinished)
-          const hasLive = roundMatches.some(m => MATCH_STATE_CONFIG[m.state]?.live)
+            // Skip if already shown in featured section and has matches
+            if (isCurrentlyFeatured && roundMatches.length > 0) return null
 
-          return (
-            <div 
-              key={round}
-              className={`
+            const isComplete = roundMatches.length > 0 && roundMatches.every(m => m.state === 'FINISHED' || m.isFinished)
+            const hasLive = roundMatches.some(m => MATCH_STATE_CONFIG[m.state]?.live)
+
+            return (
+              <div
+                key={round}
+                className={`
                 rounded-2xl border overflow-hidden
                 ${hasLive ? 'border-live/30' : isComplete ? 'border-primary/20' : 'border-border'}
               `}
-            >
-              {/* Round Header */}
-              <div className={`
+              >
+                {/* Round Header */}
+                <div className={`
                 px-4 py-3 flex items-center justify-between
                 ${hasLive ? 'bg-live/10' : isComplete ? 'bg-primary/5' : 'bg-card-hover/50'}
               `}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{getRoundIcon(round)}</span>
-                  <h3 className="font-bold text-text">{round}</h3>
-                  {hasLive && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-live/20 text-live text-xs font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />
-                      LIVE
-                    </span>
-                  )}
-                  {isComplete && !hasLive && (
-                    <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold">
-                      Complete
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{getRoundIcon(round)}</span>
+                    <h3 className="font-bold text-text">{round}</h3>
+                    {hasLive && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-live/20 text-live text-xs font-bold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulse" />
+                        LIVE
+                      </span>
+                    )}
+                    {isComplete && !hasLive && (
+                      <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-semibold">
+                        Complete
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm text-text-muted">
+                    {roundMatches.length} {roundMatches.length === 1 ? 'match' : 'matches'}
+                  </span>
+                </div>
+
+                {/* Matches */}
+                <div className="p-4">
+                  {roundMatches.length === 0 ? (
+                    <div className="text-center py-6 text-text-muted">
+                      <p>Waiting for previous round to complete...</p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-3 ${roundMatches.length === 1 ? 'max-w-lg mx-auto' :
+                      roundMatches.length === 2 ? 'sm:grid-cols-2' :
+                        'sm:grid-cols-2 lg:grid-cols-4'
+                      }`}>
+                      {roundMatches.map((match, idx) => (
+                        <MatchCard key={match.fixtureId || idx} match={match} />
+                      ))}
+                    </div>
                   )}
                 </div>
-                <span className="text-sm text-text-muted">
-                  {roundMatches.length} {roundMatches.length === 1 ? 'match' : 'matches'}
-                </span>
-              </div>
 
-              {/* Matches */}
-              <div className="p-4">
-                {roundMatches.length === 0 ? (
-                  <div className="text-center py-6 text-text-muted">
-                    <p>Waiting for previous round to complete...</p>
-                  </div>
-                ) : (
-                  <div className={`grid gap-3 ${
-                    roundMatches.length === 1 ? 'max-w-lg mx-auto' :
-                    roundMatches.length === 2 ? 'sm:grid-cols-2' :
-                    'sm:grid-cols-2 lg:grid-cols-4'
-                  }`}>
-                    {roundMatches.map((match, idx) => (
-                      <MatchCard key={match.fixtureId || idx} match={match} />
-                    ))}
+                {/* Winners Summary */}
+                {isComplete && roundMatches.length > 0 && (
+                  <div className="px-4 pb-4">
+                    <div className="bg-primary/5 rounded-xl p-3">
+                      <p className="text-xs text-text-muted mb-2">
+                        {round === 'Final' ? '🏆 Winner' : '➡️ Advanced'}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {roundMatches.map((m, idx) => {
+                          const winner = getMatchWinner(m)
+                          return winner ? (
+                            <span key={idx} className="px-2 py-1 rounded-lg bg-primary/10 text-primary text-sm font-medium">
+                              {winner}
+                            </span>
+                          ) : null
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Winners Summary */}
-              {isComplete && roundMatches.length > 0 && (
-                <div className="px-4 pb-4">
-                  <div className="bg-primary/5 rounded-xl p-3">
-                    <p className="text-xs text-text-muted mb-2">
-                      {round === 'Final' ? '🏆 Winner' : '➡️ Advanced'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {roundMatches.map((m, idx) => {
-                        const winner = getMatchWinner(m)
-                        return winner ? (
-                          <span key={idx} className="px-2 py-1 rounded-lg bg-primary/10 text-primary text-sm font-medium">
-                            {winner}
-                          </span>
-                        ) : null
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
       )}
 
       {/* No Tournament/Waiting State */}
@@ -477,9 +513,9 @@ export default function FixtureList() {
             {tournament?.state === 'SETUP' ? 'Tournament Starting Soon' : 'Waiting for Tournament'}
           </h3>
           <p className="text-text-muted mb-4">
-            {tournament?.state === 'SETUP' 
+            {tournament?.state === 'SETUP'
               ? 'Round of 16 fixtures will appear shortly when generated by the backend'
-              : 'New tournaments start every hour at :55'}
+              : 'A new tournament will start shortly'}
           </p>
           <div className="flex justify-center gap-4">
             <Link to="/live" className="btn btn-primary">
@@ -509,13 +545,13 @@ function QuickStat({ value, label, icon, highlight }) {
 }
 
 function MatchCard({ match, featured = false }) {
-  const { fixtureId, state, minute, score, penaltyScore, homeTeam, awayTeam } = match
-  
+  const { fixtureId, state, minute, score, penaltyScore, homeTeam, awayTeam, winnerId, winner } = match
+
   // Determine if match is finished - only trust explicit FINISHED state from backend
   // The backend handles extra time and penalties, so we must wait for actual FINISHED state
   const hasScore = score?.home != null || score?.away != null
   const isFinished = state === 'FINISHED' || match.isFinished === true
-  
+
   // Get state config - use actual state from backend, don't assume finished just because there's a score
   const getStateConfig = () => {
     if (MATCH_STATE_CONFIG[state]) return MATCH_STATE_CONFIG[state]
@@ -528,22 +564,35 @@ function MatchCard({ match, featured = false }) {
   const stateConfig = getStateConfig()
   const isLive = stateConfig.live
 
-  const homeWon = isFinished && (
-    (score?.home > score?.away) || 
-    (score?.home === score?.away && penaltyScore?.home > penaltyScore?.away)
-  )
-  const awayWon = isFinished && (
-    (score?.away > score?.home) || 
-    (score?.home === score?.away && penaltyScore?.away > penaltyScore?.home)
-  )
+  // Determine winner - check winnerId first (set by backend for knockout matches)
+  // This is crucial for extra time + penalty shootout matches where regular scores are tied
+  const resolvedWinnerId = winnerId || winner?.id
+  let homeWon = false
+  let awayWon = false
+
+  if (isFinished) {
+    // First check explicit winnerId from backend (handles penalties correctly)
+    // Use loose equality (==) to handle string/number type mismatches
+    if (resolvedWinnerId) {
+      homeWon = homeTeam?.id == resolvedWinnerId
+      awayWon = awayTeam?.id == resolvedWinnerId
+    }
+    // Fall back to score comparison if no winnerId
+    else {
+      homeWon = (score?.home > score?.away) ||
+        (score?.home === score?.away && penaltyScore?.home > penaltyScore?.away)
+      awayWon = (score?.away > score?.home) ||
+        (score?.home === score?.away && penaltyScore?.away > penaltyScore?.home)
+    }
+  }
 
   return (
     <Link
       to={`/live/${fixtureId}`}
       className={`
         block p-3 rounded-xl border transition-all
-        ${isLive 
-          ? 'bg-card border-live/40 shadow-md shadow-live/10' 
+        ${isLive
+          ? 'bg-card border-live/40 shadow-md shadow-live/10'
           : 'bg-card border-border hover:border-primary/30'}
         ${featured ? 'p-4' : ''}
       `}
@@ -557,7 +606,7 @@ function MatchCard({ match, featured = false }) {
           {isLive && <span className={`w-1.5 h-1.5 rounded-full ${stateConfig.dot} animate-pulse`} />}
           {isLive && minute !== undefined ? `${minute}'` : stateConfig.label}
         </span>
-        
+
         {(penaltyScore?.home > 0 || penaltyScore?.away > 0) && (
           <span className="text-xs text-text-muted">
             P: {penaltyScore.home}-{penaltyScore.away}
@@ -615,7 +664,7 @@ function UpcomingMatchCard({ match }) {
       {/* Status */}
       <div className="flex items-center justify-between mb-2">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-400">
-          Scheduled
+          Upcoming
         </span>
       </div>
 
@@ -694,22 +743,22 @@ function getMatchWinner(match) {
     if (match.homeTeam?.id === winnerId) return match.homeTeam?.name
     if (match.awayTeam?.id === winnerId) return match.awayTeam?.name
   }
-  
+
   const homeScore = Number(match.score?.home ?? 0)
   const awayScore = Number(match.score?.away ?? 0)
   const homePens = Number(match.penaltyScore?.home ?? 0)
   const awayPens = Number(match.penaltyScore?.away ?? 0)
-  
+
   // Check if there's an outright winner (either by regular score or penalties)
   if (homeScore > awayScore) return match.homeTeam?.name
   if (awayScore > homeScore) return match.awayTeam?.name
-  
+
   // Scores are tied - check penalties (only if penalties were actually taken)
   if (homePens > 0 || awayPens > 0) {
     if (homePens > awayPens) return match.homeTeam?.name
     if (awayPens > homePens) return match.awayTeam?.name
   }
-  
+
   // No clear winner (shouldn't happen in knockout, but return null for safety)
   return null
 }

@@ -16,18 +16,26 @@ export default function TournamentBracket({ matches = [], winner = null }) {
   // Calculate winner from match score
   const getMatchWinner = (match) => {
     if (!match?.isFinished && match?.state !== 'FINISHED') return null
-    const { score, penaltyScore, homeTeam, awayTeam } = match
-    
+    const { score, penaltyScore, homeTeam, awayTeam, winnerId, winner } = match
+
     if (!score) return null
-    
-    // Check penalty score first
-    if (penaltyScore?.home > penaltyScore?.away) return homeTeam
-    if (penaltyScore?.away > penaltyScore?.home) return awayTeam
-    
-    // Regular score
+
+    // Check winnerId first (backend always provides this for finished knockout matches)
+    // Use loose equality (==) to handle string/number type mismatches
+    const resolvedWinnerId = winnerId || winner?.id
+    if (resolvedWinnerId) {
+      if (homeTeam?.id == resolvedWinnerId) return homeTeam
+      if (awayTeam?.id == resolvedWinnerId) return awayTeam
+    }
+
+    // Regular score check
     if (score.home > score.away) return homeTeam
     if (score.away > score.home) return awayTeam
-    
+
+    // Scores tied - check penalties
+    if (penaltyScore?.home > penaltyScore?.away) return homeTeam
+    if (penaltyScore?.away > penaltyScore?.home) return awayTeam
+
     return null
   }
 
@@ -35,32 +43,32 @@ export default function TournamentBracket({ matches = [], winner = null }) {
     <div className="overflow-x-auto pb-4">
       <div className="min-w-[900px] flex items-stretch gap-4">
         {/* Round of 16 */}
-        <BracketRound 
-          title="Round of 16" 
-          matches={rounds.r16} 
+        <BracketRound
+          title="Round of 16"
+          matches={rounds.r16}
           getWinner={getMatchWinner}
           expectedCount={8}
         />
 
         {/* Quarter-Finals */}
-        <BracketRound 
-          title="Quarter-Finals" 
+        <BracketRound
+          title="Quarter-Finals"
           matches={rounds.qf}
           getWinner={getMatchWinner}
           expectedCount={4}
         />
 
         {/* Semi-Finals */}
-        <BracketRound 
-          title="Semi-Finals" 
+        <BracketRound
+          title="Semi-Finals"
           matches={rounds.sf}
           getWinner={getMatchWinner}
           expectedCount={2}
         />
 
         {/* Final */}
-        <BracketRound 
-          title="Final" 
+        <BracketRound
+          title="Final"
           matches={rounds.final}
           getWinner={getMatchWinner}
           expectedCount={1}
@@ -73,8 +81,8 @@ export default function TournamentBracket({ matches = [], winner = null }) {
             <div className="text-xs text-text-muted uppercase tracking-wider mb-2">Champion</div>
             <div className={`
               p-4 rounded-xl border-2
-              ${winner 
-                ? 'bg-gradient-to-br from-yellow-500/20 to-primary/20 border-yellow-500/50' 
+              ${winner
+                ? 'bg-gradient-to-br from-yellow-500/20 to-primary/20 border-yellow-500/50'
                 : 'bg-card border-dashed border-border'}
             `}>
               {winner ? (
@@ -110,7 +118,7 @@ function BracketRound({ title, matches, getWinner, expectedCount, isFinal = fals
       </div>
       <div className={`flex flex-col justify-around h-full gap-2 ${isFinal ? 'py-24' : ''}`}>
         {paddedMatches.map((match, idx) => (
-          <BracketMatch 
+          <BracketMatch
             key={match?.fixtureId || `placeholder-${idx}`}
             match={match}
             winner={match ? getWinner(match) : null}
@@ -155,10 +163,10 @@ function BracketMatch({ match, winner, isFinal }) {
       to={`/live/${fixtureId}`}
       className={`
         block rounded-lg border transition-all
-        ${isLive 
-          ? 'border-primary/50 bg-primary/10 shadow-md shadow-primary/20' 
-          : isComplete 
-            ? 'border-border bg-card/80' 
+        ${isLive
+          ? 'border-primary/50 bg-primary/10 shadow-md shadow-primary/20'
+          : isComplete
+            ? 'border-border bg-card/80'
             : 'border-border bg-card hover:border-primary/30'}
         ${isFinal ? 'p-3' : 'p-2'}
       `}
@@ -201,7 +209,7 @@ function BracketMatch({ match, winner, isFinal }) {
 // Compact version for sidebar or mobile
 export function BracketCompact({ matches = [], currentRound = '' }) {
   const roundOrder = ['Round of 16', 'Quarter-finals', 'Semi-finals', 'Final']
-  const currentIndex = roundOrder.findIndex(r => 
+  const currentIndex = roundOrder.findIndex(r =>
     currentRound.toLowerCase().includes(r.toLowerCase().replace('-', ''))
   )
 
@@ -210,12 +218,12 @@ export function BracketCompact({ matches = [], currentRound = '' }) {
       {roundOrder.map((round, idx) => {
         const isComplete = idx < currentIndex
         const isCurrent = idx === currentIndex
-        const roundMatches = matches.filter(m => 
+        const roundMatches = matches.filter(m =>
           m.round?.toLowerCase().includes(round.toLowerCase().replace('-', ''))
         )
 
         return (
-          <div 
+          <div
             key={round}
             className={`
               flex items-center gap-3 p-2 rounded-lg

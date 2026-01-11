@@ -82,14 +82,24 @@ export const eventIcons = {
   corner: '🚩',
   penalty_awarded: '🎯',
   penalty_goal: '⚽',
+  penalty_scored: '⚽',
   penalty_saved: '🧤',
   penalty_missed: '❌',
   kickoff: '🏁',
+  match_start: '🏁',
   halftime: '⏸️',
-  fulltime: '🏆',
+  second_half_start: '🏁',
+  fulltime: '⏱️',
+  match_end: '🏆',
   shootout_start: '🎯',
+  shootout_goal: '⚽',
+  shootout_miss: '❌',
+  shootout_save: '🧤',
   shootout_end: '🏆',
   extra_time_start: '⏱️',
+  extra_time_half: '⏸️',
+  et_halftime: '⏸️',
+  extra_time_end: '⏱️',
   substitution: '🔄',
   injury: '🏥',
   var_check: '📺',
@@ -106,7 +116,7 @@ export const getStatusBadge = (status) => {
     case 'live':
       return { class: 'badge-live', text: 'LIVE' }
     case 'scheduled':
-      return { class: 'badge-scheduled', text: 'Upcoming' }
+      return { class: 'badge-upcoming', text: 'Upcoming' }
     case 'completed':
     case 'finished':
       return { class: 'badge-completed', text: 'FT' }

@@ -94,7 +94,7 @@
     animation: pulse-live 2s ease-in-out infinite;
   }
 
-  .badge-scheduled {
+  .badge-upcoming {
     @apply bg-blue-500/20 text-blue-400;
   }
 
